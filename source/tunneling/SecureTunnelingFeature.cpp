@@ -75,7 +75,8 @@ namespace Aws
                     if (mServiceToPortMap.empty())
                     {
                         mServiceToPortMap["SSH"] = 22;
-                        mServiceToPortMap["VNC"] = 5900;
+                        mServiceToPortMap["GW"] = 8080;
+                        mServiceToPortMap["TIVA"] = 502;
                     }
 
                     auto result = mServiceToPortMap.find(service);
@@ -177,10 +178,10 @@ namespace Aws
                     }
                     if (nServices > 1)
                     {
-                        LOG_ERROR(
-                            TAG,
-                            "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
-                            "by Device Client.");
+                        // LOG_ERROR(
+                        //     TAG,
+                        //     "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
+                        //     "by Device Client.");
                         //return;
                     }
 
@@ -198,7 +199,7 @@ namespace Aws
                         return;
                     }
 
-                    string service = response->Services->at(1).c_str();
+                    string service = response->Services->at(0).c_str();
                     uint16_t port = GetPortFromService(service);
                     if (!IsValidPort(port))
                     {
@@ -220,6 +221,7 @@ namespace Aws
                     {
                         mContexts.push_back(std::move(context));
                     }
+                    LOG_DEBUG(TAG, "OnSubscribeToTunnelsNotifyResponse OUT");
                 }
 
                 void SecureTunnelingFeature::OnSubscribeComplete(int ioErr)
