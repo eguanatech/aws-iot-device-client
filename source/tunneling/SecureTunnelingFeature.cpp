@@ -201,13 +201,15 @@ namespace Aws
 
                     string service = response->Services->at(0).c_str();
                     uint16_t port = GetPortFromService(service);
+                    LOGM_ERROR(TAG, "OnSubscribeToTunnelsNotifyResponse service = %s", service.c_str());
+                    LOGM_ERROR(TAG, "OnSubscribeToTunnelsNotifyResponse port = %d", port);
                     if (!IsValidPort(port))
                     {
                         LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
                         return;
                     }
 
-                    LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+                    LOGM_ERROR(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
 
                     std::unique_ptr<SecureTunnelingContext> context =
                         unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
@@ -221,7 +223,7 @@ namespace Aws
                     {
                         mContexts.push_back(std::move(context));
                     }
-                    LOG_DEBUG(TAG, "OnSubscribeToTunnelsNotifyResponse OUT");
+                    LOGM_ERROR(TAG, "%s", "OnSubscribeToTunnelsNotifyResponse OUT");
                 }
 
                 void SecureTunnelingFeature::OnSubscribeComplete(int ioErr)
