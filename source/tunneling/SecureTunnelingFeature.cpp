@@ -181,7 +181,7 @@ namespace Aws
                             TAG,
                             "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
                             "by Device Client.");
-                        return;
+                        //return;
                     }
 
                     string accessToken = response->ClientAccessToken->c_str();
@@ -198,7 +198,7 @@ namespace Aws
                         return;
                     }
 
-                    string service = response->Services->at(0).c_str();
+                    string service = response->Services->at(1).c_str();
                     uint16_t port = GetPortFromService(service);
                     if (!IsValidPort(port))
                     {
