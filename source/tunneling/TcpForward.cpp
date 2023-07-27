@@ -49,9 +49,9 @@ namespace Aws
                     // snprintf(endpoint.address, AWS_ADDRESS_MAX_LEN, "%s", localhost.c_str());
                     // endpoint.port = mPort;
 
-                    string tiva = "169.254.0.5";
+                    string tiva = "10.3.2.1";
                     snprintf(endpoint.address, AWS_ADDRESS_MAX_LEN, "%s", tiva.c_str());
-                    endpoint.port = 502;
+                    endpoint.port = 8080;
 
                     LOGM_INFO(TAG, "Connecting to Tiva on %s at port %d", tiva, endpoint.port);
 
