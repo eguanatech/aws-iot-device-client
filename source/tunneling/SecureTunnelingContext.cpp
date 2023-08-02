@@ -93,7 +93,8 @@ namespace Aws
                     }
 
                     mSecureTunnel = CreateSecureTunnel(
-                        bind(&SecureTunnelingContext::OnConnectionComplete, this),
+                        bind(&SecureTunnelingContext::OnConnectionSuccess, this),
+                        bind(&SecureTunnelingContext::OnConnectionFailure, this),
                         bind(&SecureTunnelingContext::OnConnectionShutdown, this),
                         bind(&SecureTunnelingContext::OnSendDataComplete, this, placeholders::_1),
                         bind(&SecureTunnelingContext::OnDataReceive, this, placeholders::_1),
@@ -126,9 +127,14 @@ namespace Aws
 
                 void SecureTunnelingContext::DisconnectFromTcpForward() { mTcpForward.reset(); }
 
-                void SecureTunnelingContext::OnConnectionComplete() const
+                void SecureTunnelingContext::OnConnectionSuccess() const
                 {
-                    LOG_DEBUG(TAG, "SecureTunnelingContext::OnConnectionComplete");
+                    LOG_DEBUG(TAG, "SecureTunnelingContext::OnConnectionSuccess");
+                }
+
+                void SecureTunnelingContext::OnConnectionFailure() const
+                {
+                    LOG_DEBUG(TAG, "SecureTunnelingContext::OnConnectionFailure");
                 }
 
                 void SecureTunnelingContext::OnConnectionShutdown()
@@ -145,6 +151,8 @@ namespace Aws
                         LOGM_ERROR(TAG, "SecureTunnelingContext::OnSendDataComplete errorCode=%d", errorCode);
                     }
                 }
+
+                void SecureTunnelingContext::OnMessageReceived(Aws::Iotsecuretunneling::SecureTunnel*, const Aws::Iotsecuretunneling::MessageReceivedEventData&);
 
                 void SecureTunnelingContext::OnDataReceive(const Crt::ByteBuf &data) const
                 {
@@ -183,7 +191,8 @@ namespace Aws
                 }
 
                 std::shared_ptr<SecureTunnelWrapper> SecureTunnelingContext::CreateSecureTunnel(
-                    const Aws::Iotsecuretunneling::OnConnectionComplete &onConnectionComplete,
+                    const Aws::Iotsecuretunneling::OnConnectionSuccess &OnConnectionSuccess,
+                    const Aws::Iotsecuretunneling::OnConnectionFailure &OnConnectionFailure,
                     const Aws::Iotsecuretunneling::OnConnectionShutdown &onConnectionShutdown,
                     const Aws::Iotsecuretunneling::OnSendDataComplete &onSendDataComplete,
                     const Aws::Iotsecuretunneling::OnDataReceive &onDataReceive,
@@ -199,7 +208,8 @@ namespace Aws
                         AWS_SECURE_TUNNELING_DESTINATION_MODE,
                         mEndpoint,
                         mRootCa,
-                        onConnectionComplete,
+                        OnConnectionSuccess,
+                        OnConnectionFailure,
                         onConnectionShutdown,
                         onSendDataComplete,
                         onDataReceive,
