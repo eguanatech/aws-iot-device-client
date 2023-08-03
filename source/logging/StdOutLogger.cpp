@@ -29,13 +29,12 @@ void StdOutLogger::run()
     {
         unique_ptr<LogMessage> message = logQueue->getNextLog();
 
-        // auto now = std::chrono::system_clock::now();
-        // std::time_t current_time = std::chrono::system_clock::to_time_t(now);
+        auto now = std::chrono::system_clock::now();
+        std::time_t current_time = std::chrono::system_clock::to_time_t(now);
         std::ofstream ofs;
-        ofs.open("/var/run/watchdog.aws-iot-device-client", std::ofstream::out);
-        ofs << 112233 << std::endl;
+        ofs.open("/var/run/watchdog.aws-iot-device-client", std::ofstream::out | std::ofstream::app);
+        ofs << current_time << 112233 << std::endl;
         ofs.close();
-        cout << "StdOutLogger::run" << endl;
 
         if (NULL != message)
         {

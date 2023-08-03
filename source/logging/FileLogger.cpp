@@ -110,6 +110,11 @@ void FileLogger::run()
 
     while (!needsShutdown)
     {
+        std::ofstream ofs;
+        ofs.open("/var/run/watchdog.aws-iot-device-client", std::ofstream::out);
+        ofs << 112233 << std::endl;
+        ofs.close();
+
         unique_ptr<LogMessage> message = logQueue->getNextLog();
 
         if (NULL != message)
