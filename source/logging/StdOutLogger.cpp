@@ -27,14 +27,21 @@ void StdOutLogger::run()
 {
     while (!needsShutdown)
     {
-        unique_ptr<LogMessage> message = logQueue->getNextLog();
+        // update watchdog file
+        struct timespec timeSpec = {0, 0L}; /* Time structure       */
+        time_t retTime = 0;                 /* Time value to return */
 
-        auto now = std::chrono::system_clock::now();
-        std::time_t current_time = std::chrono::system_clock::to_time_t(now);
-        std::ofstream ofs;
-        ofs.open("/var/run/watchdog.aws-iot-device-client", std::ofstream::out | std::ofstream::app);
-        ofs << current_time << 112233 << std::endl;
-        ofs.close();
+        if (clock_gettime(CLOCK_MONOTONIC, &(timeSpec)) == 0)
+        {
+            retTime = timeSpec.tv_sec;
+
+            ofstream ofs;
+            ofs.open("/var/run/watchdog.aws-iot-device-client", ofstream::out);
+            ofs << retTime << std::endl;
+            ofs.close();
+        }
+
+        unique_ptr<LogMessage> message = logQueue->getNextLog();
 
         if (NULL != message)
         {
