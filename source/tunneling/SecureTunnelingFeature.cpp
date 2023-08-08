@@ -177,10 +177,13 @@ namespace Aws
                     }
                     if (nServices > 1)
                     {
-                        LOG_ERROR(
+                        string accessToken = response->ClientAccessToken->c_str();
+                        LOGM_INFO(
                             TAG,
                             "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
-                            "by Device Client.");
+                            "by Device Client. token = %s", accessToken);
+                        
+                        //system("localproxy -r us-east-2 ");
                         return;
                     }
 
