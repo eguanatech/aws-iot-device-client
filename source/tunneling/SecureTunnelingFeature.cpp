@@ -183,10 +183,9 @@ namespace Aws
                             "by Device Client. region = %s, token = %s", response->Region->c_str(), response->ClientAccessToken->c_str());
                         string region = response->Region->c_str();
                         string ClientAccessToken = response->ClientAccessToken->c_str();
-                        // string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken;
-                        string command = "./findName.sh";
+                        string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken;
                         int ret = system(command.c_str());
-                        LOGM_ERROR(TAG, "no service requested %d", ret);
+                        LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
                         return;
                     }
 
