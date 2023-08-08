@@ -184,7 +184,7 @@ namespace Aws
                         string region = response->Region->c_str();
                         string ClientAccessToken = response->ClientAccessToken->c_str();
                         string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken;
-                        system(command.c_str());
+                        system("echo test");
                         return;
                     }
 
