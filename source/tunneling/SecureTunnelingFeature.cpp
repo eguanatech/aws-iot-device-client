@@ -186,6 +186,7 @@ namespace Aws
                         // string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken;
                         string command = "./findName.sh";
                         int ret = system(command.c_str());
+                        LOGM_ERROR(TAG, "no service requested %d", ret);
                         return;
                     }
 
