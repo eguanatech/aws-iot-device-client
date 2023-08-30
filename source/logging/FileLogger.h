@@ -36,7 +36,7 @@ namespace Aws
                      * \brief The default value in milliseconds for which Device client will wait after getting a
                      * log message from logQueue
                      */
-                    static constexpr int DEFAULT_WAIT_TIME_MILLISECONDS = 1;
+                    static constexpr int DEFAULT_WAIT_TIME_MILLISECONDS = 100;
 
                     /**
                      * \brief Flag used to notify underlying threads that they should discontinue any processing
