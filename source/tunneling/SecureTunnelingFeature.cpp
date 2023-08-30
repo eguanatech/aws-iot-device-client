@@ -181,6 +181,12 @@ namespace Aws
                             TAG,
                             "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
                             "by Device Client. region = %s, token = %s", response->Region->c_str(), response->ClientAccessToken->c_str());
+                        int x = system("ping -c1 -s1 169.254.0.5  > /dev/null 2>&1");
+                        if (x == 0) {
+                            LOG_ERROR(TAG, "ping 169.254.0.5 succeed!");
+                        } else {
+                            LOG_ERROR(TAG, "ping 169.254.0.5 failed!");
+                        }
                         string region = response->Region->c_str();
                         string ClientAccessToken = response->ClientAccessToken->c_str();
                         string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken + " 2>&1 | tee /var/log/localproxy.log";
