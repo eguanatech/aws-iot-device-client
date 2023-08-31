@@ -192,7 +192,7 @@ namespace Aws
                         return;
                     }
 
-                    string command = "localproxy -r " + region + " -d ";
+                    string command = "localproxy -r " + region + " -t " + accessToken + " -d ";
                     for (int x = 0; x < (int) nServices; x++) {
                         string service = response->Services->at(x).c_str();
                         uint16_t port = GetPortFromService(service);
