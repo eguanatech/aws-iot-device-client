@@ -192,24 +192,28 @@ namespace Aws
                         return;
                     }
 
-                    string command = "localproxy -r " + region + " -t " + accessToken + " -d ";
+                    string command = "localproxy -r " + region + " -d ";
                     for (int x = 0; x < (int) nServices; x++) {
                         string service = response->Services->at(x).c_str();
                         uint16_t port = GetPortFromService(service);
                         if (!IsValidPort(port))
                         {
-                            LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
-                            return;
+                            LOGM_WARN(TAG, "Requested service is not supported: %s", service.c_str());
+                            continue;
                         }
 
                         LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+
+                        if (x > 0) {
+                            command += ",";
+                        }
 
                         if (service == "SSH") {
                             command += "SSH=10.3.2.1:22";
                         } else if (service == "GW") {
                             command += "GW=10.3.2.1:8080";
                         } else if (service == "TIVA") {
-                            int ret = system("ping -c1 -s1 169.254.0.5 > /dev/null 2>&1");
+                            int ret = system("ping -c1 -s1 169.254.0.5");
                             if (ret == 0) {
                                 LOG_INFO(TAG, "Trying to tunnel to the inverter by TCP.");
                                 command += "TIVA=169.254.0.5:502";
@@ -217,14 +221,11 @@ namespace Aws
                                 LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
                                 command += "TIVA=10.3.2.1:503 | nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
                             }
-                        } else {
-                            LOGM_ERROR(TAG, "Unexpected serviceId %s", service);
-                            return;
                         }
                     }
 
                     command += " | tee /var/log/localproxy.log";
-                    LOGM_ERROR(TAG, "command = %s", command);
+                    LOGM_ERROR(TAG, "command = %s", command.c_str());
                     int ret = system(command.c_str());
                     LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
 
