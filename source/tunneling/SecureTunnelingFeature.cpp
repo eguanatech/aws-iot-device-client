@@ -191,7 +191,7 @@ namespace Aws
                     }
 
                     string command = "localproxy -r " + region + " -t " + accessToken + " -d ";
-                    for (int x = 0; x < nServices; x++) {
+                    for (int x = 0; x < (int) nServices; x++) {
                         string service = response->Services->at(x).c_str();
                         uint16_t port = GetPortFromService(service);
                         if (!IsValidPort(port))
@@ -216,7 +216,7 @@ namespace Aws
                                 command += "TIVA=10.3.2.1:31337 | nc -l 10.3.2.1:31337 > /dev/ttymxc2 < /dev/ttymxc2";
                             }
                         } else {
-                            LOG_ERROR(TAG, "Unexpected serviceId %s", service);
+                            LOGM_ERROR(TAG, "Unexpected serviceId %s", service);
                             return;
                         }
                     }
