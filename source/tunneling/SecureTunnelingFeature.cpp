@@ -76,6 +76,8 @@ namespace Aws
                     {
                         mServiceToPortMap["SSH"] = 22;
                         mServiceToPortMap["VNC"] = 5900;
+                        mServiceToPortMap["GW"] = 8080;
+                        mServiceToPortMap["TIVA"] = 502;
                     }
 
                     auto result = mServiceToPortMap.find(service);
@@ -175,14 +177,6 @@ namespace Aws
                         LOG_ERROR(TAG, "no service requested");
                         return;
                     }
-                    if (nServices > 1)
-                    {
-                        LOG_ERROR(
-                            TAG,
-                            "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
-                            "by Device Client.");
-                        return;
-                    }
 
                     string accessToken = response->ClientAccessToken->c_str();
                     if (accessToken.empty())
@@ -198,28 +192,76 @@ namespace Aws
                         return;
                     }
 
-                    string service = response->Services->at(0).c_str();
-                    uint16_t port = GetPortFromService(service);
-                    if (!IsValidPort(port))
-                    {
-                        LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
-                        return;
+                    string command = "localproxy -r " + region + " -t " + accessToken + " -d ";
+                    for (int x = 0; x < (int) nServices; x++) {
+                        string service = response->Services->at(x).c_str();
+                        uint16_t port = GetPortFromService(service);
+                        if (!IsValidPort(port))
+                        {
+                            LOGM_WARN(TAG, "Requested service is not supported: %s", service.c_str());
+                            continue;
+                        }
+
+                        LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+
+                        if (x > 0) {
+                            command += ",";
+                        }
+
+                        if (service == "SSH") {
+                            command += "SSH=10.3.2.1:22";
+                        } else if (service == "GW") {
+                            command += "GW=10.3.2.1:8080";
+                        } else if (service == "TIVA") {
+                            int ret = system("ping -c1 -s1 169.254.0.5");
+                            if (ret == 0) {
+                                LOG_INFO(TAG, "Trying to tunnel to the inverter by TCP.");
+                                command += "TIVA=169.254.0.5:502";
+                            } else {
+                                LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
+                                command += "TIVA=10.3.2.1:503 | nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
+                            }
+                        }
                     }
 
-                    LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+                    command += " | tee /var/log/localproxy.log";
+                    LOGM_ERROR(TAG, "command = %s", command.c_str());
+                    int ret = system(command.c_str());
+                    LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
 
-                    std::unique_ptr<SecureTunnelingContext> context =
-                        unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
-                            mSharedCrtResourceManager,
-                            mRootCa,
-                            accessToken,
-                            GetEndpoint(region),
-                            port,
-                            bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
-                    if (context->ConnectToSecureTunnel())
-                    {
-                        mContexts.push_back(std::move(context));
-                    }
+                    // if (nServices > 1)
+                    // {
+                    //     LOGM_INFO(
+                    //         TAG,
+                    //         "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
+                    //         "by Device Client. region = %s, token = %s", response->Region->c_str(), response->ClientAccessToken->c_str());
+
+                    //     string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken + " 2>&1 | tee /var/log/localproxy.log";
+                    //     int ret = system(command.c_str());
+                    //     LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
+                    //     return;
+                    // }
+
+                    // string service = response->Services->at(0).c_str();
+                    // uint16_t port = GetPortFromService(service);
+                    // if (!IsValidPort(port))
+                    // {
+                    //     LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
+                    //     return;
+                    // }
+
+                    // std::unique_ptr<SecureTunnelingContext> context =
+                    //     unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
+                    //         mSharedCrtResourceManager,
+                    //         mRootCa,
+                    //         accessToken,
+                    //         GetEndpoint(region),
+                    //         port,
+                    //         bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
+                    // if (context->ConnectToSecureTunnel())
+                    // {
+                    //     mContexts.push_back(std::move(context));
+                    // }
                 }
 
                 void SecureTunnelingFeature::OnSubscribeComplete(int ioErr)
