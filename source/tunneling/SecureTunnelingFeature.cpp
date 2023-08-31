@@ -76,6 +76,8 @@ namespace Aws
                     {
                         mServiceToPortMap["SSH"] = 22;
                         mServiceToPortMap["VNC"] = 5900;
+                        mServiceToPortMap["GW"] = 8080;
+                        mServiceToPortMap["TIVA"] = 502;
                     }
 
                     auto result = mServiceToPortMap.find(service);
@@ -213,7 +215,7 @@ namespace Aws
                                 command += "TIVA=169.254.0.5:502";
                             } else {
                                 LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
-                                command += "TIVA=10.3.2.1:31337 | nc -l 10.3.2.1:31337 > /dev/ttymxc2 < /dev/ttymxc2";
+                                command += "TIVA=10.3.2.1:502 | nc -l 10.3.2.1:502 > /dev/ttymxc2 < /dev/ttymxc2";
                             }
                         } else {
                             LOGM_ERROR(TAG, "Unexpected serviceId %s", service);
