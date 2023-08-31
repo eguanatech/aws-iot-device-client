@@ -209,13 +209,13 @@ namespace Aws
                         } else if (service == "GW") {
                             command += "GW=10.3.2.1:8080";
                         } else if (service == "TIVA") {
-                            int ret = system("ping -c1 -s1 169.254.0.5  > /dev/null 2>&1");
+                            int ret = system("ping -c1 -s1 169.254.0.5 > /dev/null 2>&1");
                             if (ret == 0) {
                                 LOG_INFO(TAG, "Trying to tunnel to the inverter by TCP.");
                                 command += "TIVA=169.254.0.5:502";
                             } else {
                                 LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
-                                command += "TIVA=10.3.2.1:502 | nc -l 10.3.2.1:502 > /dev/ttymxc2 < /dev/ttymxc2";
+                                command += "TIVA=10.3.2.1:503 | nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
                             }
                         } else {
                             LOGM_ERROR(TAG, "Unexpected serviceId %s", service);
@@ -223,7 +223,8 @@ namespace Aws
                         }
                     }
 
-                    command += " 2>&1 | tee /var/log/localproxy.log";
+                    command += " | tee /var/log/localproxy.log";
+                    LOGM_ERROR(TAG, "command = %s", command);
                     int ret = system(command.c_str());
                     LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
 
