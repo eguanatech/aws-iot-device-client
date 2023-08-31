@@ -175,25 +175,6 @@ namespace Aws
                         LOG_ERROR(TAG, "no service requested");
                         return;
                     }
-                    if (nServices > 1)
-                    {
-                        LOGM_INFO(
-                            TAG,
-                            "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
-                            "by Device Client. region = %s, token = %s", response->Region->c_str(), response->ClientAccessToken->c_str());
-                        int x = system("ping -c1 -s1 169.254.0.5  > /dev/null 2>&1");
-                        if (x == 0) {
-                            LOG_ERROR(TAG, "ping 169.254.0.5 succeed!");
-                        } else {
-                            LOG_ERROR(TAG, "ping 169.254.0.5 failed!");
-                        }
-                        string region = response->Region->c_str();
-                        string ClientAccessToken = response->ClientAccessToken->c_str();
-                        string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken + " 2>&1 | tee /var/log/localproxy.log";
-                        int ret = system(command.c_str());
-                        LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
-                        return;
-                    }
 
                     string accessToken = response->ClientAccessToken->c_str();
                     if (accessToken.empty())
@@ -209,28 +190,74 @@ namespace Aws
                         return;
                     }
 
-                    string service = response->Services->at(0).c_str();
-                    uint16_t port = GetPortFromService(service);
-                    if (!IsValidPort(port))
-                    {
-                        LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
-                        return;
+                    string command = "localproxy -r " + region + " -t " + accessToken + " -d ";
+                    for (int x = 0; x < nServices; x++) {
+                        string service = response->Services->at(x).c_str();
+                        uint16_t port = GetPortFromService(service);
+                        if (!IsValidPort(port))
+                        {
+                            LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
+                            return;
+                        }
+
+                        LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+
+                        if (service == "SSH") {
+                            command += "SSH=10.3.2.1:22";
+                        } else if (service == "GW") {
+                            command += "GW=10.3.2.1:8080";
+                        } else if (service == "TIVA") {
+                            int ret = system("ping -c1 -s1 169.254.0.5  > /dev/null 2>&1");
+                            if (ret == 0) {
+                                LOG_INFO(TAG, "Trying to tunnel to the inverter by TCP.");
+                                command += "TIVA=169.254.0.5:502";
+                            } else {
+                                LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
+                                command += "TIVA=10.3.2.1:31337 | nc -l 10.3.2.1:31337 > /dev/ttymxc2 < /dev/ttymxc2";
+                            }
+                        } else {
+                            LOG_ERROR(TAG, "Unexpected serviceId %s", service);
+                            return;
+                        }
                     }
 
-                    LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+                    command += " 2>&1 | tee /var/log/localproxy.log";
+                    int ret = system(command.c_str());
+                    LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
 
-                    std::unique_ptr<SecureTunnelingContext> context =
-                        unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
-                            mSharedCrtResourceManager,
-                            mRootCa,
-                            accessToken,
-                            GetEndpoint(region),
-                            port,
-                            bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
-                    if (context->ConnectToSecureTunnel())
-                    {
-                        mContexts.push_back(std::move(context));
-                    }
+                    // if (nServices > 1)
+                    // {
+                    //     LOGM_INFO(
+                    //         TAG,
+                    //         "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
+                    //         "by Device Client. region = %s, token = %s", response->Region->c_str(), response->ClientAccessToken->c_str());
+
+                    //     string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken + " 2>&1 | tee /var/log/localproxy.log";
+                    //     int ret = system(command.c_str());
+                    //     LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
+                    //     return;
+                    // }
+
+                    // string service = response->Services->at(0).c_str();
+                    // uint16_t port = GetPortFromService(service);
+                    // if (!IsValidPort(port))
+                    // {
+                    //     LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
+                    //     return;
+                    // }
+
+                    // std::unique_ptr<SecureTunnelingContext> context =
+                    //     unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
+                    //         mSharedCrtResourceManager,
+                    //         mRootCa,
+                    //         accessToken,
+                    //         GetEndpoint(region),
+                    //         port,
+                    //         bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
+                    // if (context->ConnectToSecureTunnel())
+                    // {
+                    //     mContexts.push_back(std::move(context));
+                    // }
                 }
 
                 void SecureTunnelingFeature::OnSubscribeComplete(int ioErr)
