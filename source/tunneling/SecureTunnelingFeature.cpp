@@ -219,12 +219,12 @@ namespace Aws
                                 command += "TIVA=169.254.0.5:502";
                             } else {
                                 LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
-                                command += "TIVA=10.3.2.1:503 | nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
+                                command += "TIVA=10.3.2.1:503";
                             }
                         }
                     }
 
-                    command += " | tee /var/log/localproxy.log";
+                    command += " | tee /var/log/localproxy.log | nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2 &";
                     LOGM_ERROR(TAG, "command = %s", command.c_str());
                     int ret = system(command.c_str());
                     LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
