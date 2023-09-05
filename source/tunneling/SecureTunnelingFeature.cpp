@@ -193,6 +193,7 @@ namespace Aws
                     }
 
                     string command = "localproxy -r " + region + " -t " + accessToken + " -d ";
+                    bool isTcp = true;
                     for (int x = 0; x < (int) nServices; x++) {
                         string service = response->Services->at(x).c_str();
                         uint16_t port = GetPortFromService(service);
@@ -220,11 +221,15 @@ namespace Aws
                             } else {
                                 LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
                                 command += "TIVA=10.3.2.1:503";
+                                isTcp = false;
                             }
                         }
                     }
 
-                    command += " | tee /var/log/localproxy.log | nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2 &";
+                    command += " | tee /var/log/localproxy.log";
+                    if (!isTcp) {
+                        command += "&& nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
+                    }
                     LOGM_ERROR(TAG, "command = %s", command.c_str());
                     int ret = system(command.c_str());
                     LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
