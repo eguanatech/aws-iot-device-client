@@ -226,9 +226,11 @@ namespace Aws
                         }
                     }
 
-                    command += " | tee /var/log/localproxy.log";
+                    // store logs to file
+                    command += " 2>&1 | tee /var/log/localproxy.log";
+                    // redirect packets received by device client to RS485
                     if (!isTcp) {
-                        command += "&& nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
+                        command += " && nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
                     }
                     LOGM_ERROR(TAG, "command = %s", command.c_str());
                     int ret = system(command.c_str());
