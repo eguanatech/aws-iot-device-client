@@ -227,14 +227,18 @@ namespace Aws
                     }
 
                     // store logs to file
-                    command += " 2>&1 | tee /var/log/localproxy.log";
+                    command += " 2>&1 | tee /var/log/localproxy.log &";
                     // redirect packets received by device client to RS485
-                    if (!isTcp) {
-                        command += " && nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2";
-                    }
-                    LOGM_ERROR(TAG, "command = %s", command.c_str());
+                    LOGM_INFO(TAG, "command = %s", command.c_str());
                     int ret = system(command.c_str());
-                    LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
+                    LOGM_INFO(TAG, "Running localproxy return code = %d", ret);
+
+                    if (!isTcp) {
+                        command = "nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2 &";
+                        LOGM_INFO(TAG, "command = %s", command.c_str());
+                        int ret = system(command.c_str());
+                        LOGM_INFO(TAG, "Running netcat command return code = %d", ret);
+                    }
 
                     // if (nServices > 1)
                     // {
