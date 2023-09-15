@@ -193,8 +193,8 @@ namespace Aws
                     }
 
                     string command = "localproxy -r " + region + " -t " + accessToken + " -d ";
-                    bool isTcp = true;
-                    for (int x = 0; x < (int) nServices; x++) {
+                    for (int x = 0; x < (int)nServices; x++)
+                    {
                         string service = response->Services->at(x).c_str();
                         uint16_t port = GetPortFromService(service);
                         if (!IsValidPort(port))
@@ -205,24 +205,41 @@ namespace Aws
 
                         LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
 
-                        if (x > 0) {
+                        if (x > 0)
+                        {
                             command += ",";
                         }
 
-                        if (service == "SSH") {
+                        if (service == "SSH")
+                        {
                             command += "SSH=10.3.2.1:22";
-                        } else if (service == "GW") {
+                        }
+                        else if (service == "GW")
+                        {
                             command += "GW=10.3.2.1:8080";
-                        } else if (service == "TIVA") {
-                            int ret = system("ping -c1 -s1 169.254.0.5");
-                            if (ret == 0) {
-                                LOG_INFO(TAG, "Trying to tunnel to the inverter by TCP.");
-                                command += "TIVA=169.254.0.5:502";
-                            } else {
-                                LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
-                                command += "TIVA=10.3.2.1:503";
-                                isTcp = false;
+                        }
+                        else if (service == "TIVA")
+                        {
+                            FILE *pFile;
+                            char state[16];
+
+                            pFile = fopen("/sys/class/net/eth3/operstate", "r");
+
+                            if (fgets(state, 16, pFile) != NULL)
+                            {
+                                if (strcmp(state, "up\n\0") == 0)
+                                {
+                                    LOG_INFO(TAG, "Trying to tunnel to the inverter by TCP.");
+                                    command += "TIVA=169.254.0.5:502";
+                                }
+                                else
+                                {
+                                    LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
+                                    command += "TIVA=10.3.2.1:503";
+                                }
                             }
+
+                            fclose(pFile);
                         }
                     }
 
@@ -233,23 +250,17 @@ namespace Aws
                     int ret = system(command.c_str());
                     LOGM_INFO(TAG, "Running localproxy return code = %d", ret);
 
-                    if (!isTcp) {
-                        command = "nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2 &";
-                        LOGM_INFO(TAG, "command = %s", command.c_str());
-                        int ret = system(command.c_str());
-                        LOGM_INFO(TAG, "Running netcat command return code = %d", ret);
-                    }
-
                     // if (nServices > 1)
                     // {
                     //     LOGM_INFO(
                     //         TAG,
-                    //         "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
-                    //         "by Device Client. region = %s, token = %s", response->Region->c_str(), response->ClientAccessToken->c_str());
+                    //         "Received a multi-port tunnel request, but multi-port tunneling is not currently
+                    //         supported " "by Device Client. region = %s, token = %s", response->Region->c_str(),
+                    //         response->ClientAccessToken->c_str());
 
-                    //     string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " + region + " -t " + ClientAccessToken + " 2>&1 | tee /var/log/localproxy.log";
-                    //     int ret = system(command.c_str());
-                    //     LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
+                    //     string command = "localproxy -d SSH=10.3.2.1:22,GW=10.3.2.1:8080,TIVA=169.254.0.5:502 -r " +
+                    //     region + " -t " + ClientAccessToken + " 2>&1 | tee /var/log/localproxy.log"; int ret =
+                    //     system(command.c_str()); LOGM_INFO(TAG, "Running localproxy instead return code = %d", ret);
                     //     return;
                     // }
 
