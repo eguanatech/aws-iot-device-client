@@ -28,6 +28,7 @@ namespace Aws
                 constexpr char SecureTunnelingFeature::TAG[];
                 constexpr char SecureTunnelingFeature::DEFAULT_PROXY_ENDPOINT_HOST_FORMAT[];
                 std::map<std::string, uint16_t> SecureTunnelingFeature::mServiceToPortMap;
+                std::map<std::string, std::string> SecureTunnelingFeature::mServiceToAddressMap;
 
                 SecureTunnelingFeature::SecureTunnelingFeature() = default;
 
@@ -75,11 +76,33 @@ namespace Aws
                     if (mServiceToPortMap.empty())
                     {
                         mServiceToPortMap["SSH"] = 22;
-                        mServiceToPortMap["VNC"] = 5900;
+                        mServiceToPortMap["GW"] = 8080;
+                        mServiceToPortMap["TIVA_TCP"] = 502;
+                        mServiceToPortMap["TIVA_RS485"] = 503;
                     }
 
                     auto result = mServiceToPortMap.find(service);
                     if (result == mServiceToPortMap.end())
+                    {
+                        LOGM_ERROR(TAG, "Requested unsupported service. service=%s", service.c_str());
+                        return 0; // TODO: Consider throw
+                    }
+
+                    return result->second;
+                }
+
+                string SecureTunnelingFeature::GetAddressFromService(const std::string &service)
+                {
+                    if (mServiceToAddressMap.empty())
+                    {
+                        mServiceToAddressMap["SSH"] = "10.3.2.1";
+                        mServiceToAddressMap["GW"] = "10.3.2.1";
+                        mServiceToAddressMap["TIVA_TCP"] = "169.254.0.5";
+                        mServiceToAddressMap["TIVA_RS485"] = "10.3.2.1";
+                    }
+
+                    auto result = mServiceToAddressMap.find(service);
+                    if (result == mServiceToAddressMap.end())
                     {
                         LOGM_ERROR(TAG, "Requested unsupported service. service=%s", service.c_str());
                         return 0; // TODO: Consider throw
@@ -105,8 +128,9 @@ namespace Aws
                                 *config.rootCa,
                                 *config.tunneling.destinationAccessToken,
                                 GetEndpoint(*config.tunneling.region),
-                                static_cast<uint16_t>(config.tunneling.port.value()),
-                                bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
+                                GetDefaultDestination(config.tunneling.port),
+                                bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1),
+                                false));
                         mContexts.push_back(std::move(context));
                     }
                 }
@@ -175,14 +199,6 @@ namespace Aws
                         LOG_ERROR(TAG, "no service requested");
                         return;
                     }
-                    if (nServices > 1)
-                    {
-                        LOG_ERROR(
-                            TAG,
-                            "Received a multi-port tunnel request, but multi-port tunneling is not currently supported "
-                            "by Device Client.");
-                        return;
-                    }
 
                     string accessToken = response->ClientAccessToken->c_str();
                     if (accessToken.empty())
@@ -198,24 +214,18 @@ namespace Aws
                         return;
                     }
 
-                    string service = response->Services->at(0).c_str();
-                    uint16_t port = GetPortFromService(service);
-                    if (!IsValidPort(port))
-                    {
-                        LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
-                        return;
-                    }
-
-                    LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+                    string destination = GetDestination(response->Services);
+                    LOGM_DEBUG(TAG, "Destination=%s", destination.c_str());
 
                     std::unique_ptr<SecureTunnelingContext> context =
                         unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
                             mSharedCrtResourceManager,
                             mRootCa,
                             accessToken,
-                            GetEndpoint(region),
-                            port,
-                            bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
+                            region,
+                            destination,
+                            bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1),
+                            isRS485));
                     if (context->ConnectToSecureTunnel())
                     {
                         mContexts.push_back(std::move(context));
@@ -253,6 +263,53 @@ namespace Aws
                     }
 
                     return endpoint;
+                }
+
+                string SecureTunnelingFeature::GetDestination(Aws::Crt::Optional<Aws::Crt::Vector<Aws::Crt::String>> services) {
+                    string destination = "";
+                    for (int i = 0; i < (int)services->size(); i++) {
+                        string service = services->at(i).c_str();
+                        if (service == "TIVA") {
+                            FILE *pFile;
+                            char state[16];
+
+                            pFile = fopen("/sys/class/net/eth3/operstate", "r");
+
+                            if (fgets(state, 16, pFile) != NULL)
+                            {
+                                if (strcmp(state, "up\n\0") == 0)
+                                {
+                                    LOG_INFO(TAG, "Trying to tunnel to the inverter by TCP.");
+                                    service += "_TCP";
+                                }
+                                else
+                                {
+                                    LOG_INFO(TAG, "Trying to tunnel to the inverter by RS485.");
+                                    service += "_RS485";
+                                    isRS485 = true;
+                                }
+                            }
+
+                            fclose(pFile);
+                        }
+                        uint16_t port = GetPortFromService(service);
+                        if (!IsValidPort(port))
+                        {
+                            LOGM_WARN(TAG, "Requested service is not supported: %s", service);
+                            continue;
+                        }
+                        string address = GetAddressFromService(service);
+                        service = services->at(i).c_str();
+                        LOGM_DEBUG(TAG, "Service=%s, IP=%s, Port=%u", service.c_str(), address.c_str(), port);
+                        destination += (i > 0 ? "," : "") + service + "=" + address + ":" + std::to_string(port);
+                    }
+                    return destination;
+                }
+
+                string SecureTunnelingFeature::GetDefaultDestination(const Aws::Crt::Optional<int> port) {
+                    string address = GetAddressFromService("SSH");
+                    LOGM_DEBUG(TAG, "Service=SSH, IP=%s, Port=%u", address.c_str(), port);
+                    return "SSH=" + address + ":" + std::to_string(port.has_value() ? port.value() : 22);
                 }
 
                 void SecureTunnelingFeature::OnConnectionShutdown(SecureTunnelingContext *contextToRemove)

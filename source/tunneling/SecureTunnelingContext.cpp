@@ -24,16 +24,18 @@ namespace Aws
                     shared_ptr<SharedCrtResourceManager> manager,
                     const string &rootCa,
                     const string &accessToken,
-                    const string &endpoint,
-                    uint16_t port,
-                    OnConnectionShutdownFn onConnectionShutdown)
+                    const string &region,
+                    const string &destination,
+                    OnConnectionShutdownFn onConnectionShutdown,
+                    const bool isRS485)
                 {
                     mSharedCrtResourceManager = manager;
                     mRootCa = rootCa;
                     mAccessToken = accessToken;
-                    mEndpoint = endpoint;
-                    mPort = port;
+                    mRegion = region;
+                    mDestination = destination;
                     mOnConnectionShutdown = onConnectionShutdown;
+                    mIsRS485 = isRS485;
                 }
 
                 SecureTunnelingContext::~SecureTunnelingContext() { mSecureTunnel->Close(); }
@@ -77,51 +79,61 @@ namespace Aws
 
                 bool SecureTunnelingContext::ConnectToSecureTunnel()
                 {
-                    if (mAccessToken.empty() || mEndpoint.empty())
+                    if (mAccessToken.empty() || mRegion.empty() || mDestination.empty())
                     {
                         LOG_ERROR(TAG, "Cannot connect to secure tunnel. Either access token or endpoint is empty");
                         return false;
                     }
 
-                    mSecureTunnel = unique_ptr<SecureTunnel>(new SecureTunnel(
-                        mSharedCrtResourceManager->getAllocator(),
-                        mSharedCrtResourceManager->getClientBootstrap(),
-                        Aws::Crt::Io::SocketOptions(),
+                    string command = "localproxy -r " + mRegion + " -d " + mDestination + " -t " + mAccessToken + " 2>&1 | tee /var/log/localproxy.log &";
+                    LOGM_INFO(TAG, "command=%s", command.c_str());
+                    int ret = system(command.c_str());
+                    LOGM_INFO(TAG, "Running localproxy, return %d", ret);
 
-                        mAccessToken,
-                        AWS_SECURE_TUNNELING_DESTINATION_MODE,
-                        mEndpoint,
-                        mRootCa,
+                    return ret == 0;
 
-                        bind(&SecureTunnelingContext::OnConnectionComplete, this),
-                        bind(&SecureTunnelingContext::OnConnectionShutdown, this),
-                        bind(&SecureTunnelingContext::OnSendDataComplete, this, placeholders::_1),
-                        bind(&SecureTunnelingContext::OnDataReceive, this, placeholders::_1),
-                        bind(&SecureTunnelingContext::OnStreamStart, this),
-                        bind(&SecureTunnelingContext::OnStreamReset, this),
-                        bind(&SecureTunnelingContext::OnSessionReset, this)));
+                    // mSecureTunnel = unique_ptr<SecureTunnel>(new SecureTunnel(
+                    //     mSharedCrtResourceManager->getAllocator(),
+                    //     mSharedCrtResourceManager->getClientBootstrap(),
+                    //     Aws::Crt::Io::SocketOptions(),
 
-                    bool ok = mSecureTunnel->Connect() == AWS_OP_SUCCESS;
-                    if (!ok)
-                    {
-                        LOG_ERROR(TAG, "Cannot connect to secure tunnel. Please see the SDK log for detail.");
-                    }
-                    return ok;
+                    //     mAccessToken,
+                    //     AWS_SECURE_TUNNELING_DESTINATION_MODE,
+                    //     mEndpoint,
+                    //     mRootCa,
+
+                    //     bind(&SecureTunnelingContext::OnConnectionComplete, this),
+                    //     bind(&SecureTunnelingContext::OnConnectionShutdown, this),
+                    //     bind(&SecureTunnelingContext::OnSendDataComplete, this, placeholders::_1),
+                    //     bind(&SecureTunnelingContext::OnDataReceive, this, placeholders::_1),
+                    //     bind(&SecureTunnelingContext::OnStreamStart, this),
+                    //     bind(&SecureTunnelingContext::OnStreamReset, this),
+                    //     bind(&SecureTunnelingContext::OnSessionReset, this)));
+
+                    // bool ok = mSecureTunnel->Connect() == AWS_OP_SUCCESS;
+                    // if (!ok)
+                    // {
+                    //     LOG_ERROR(TAG, "Cannot connect to secure tunnel. Please see the SDK log for detail.");
+                    // }
+                    // return ok;
                 }
 
                 void SecureTunnelingContext::ConnectToTcpForward()
                 {
-                    if (!SecureTunnelingFeature::IsValidPort(mPort))
-                    {
-                        LOGM_ERROR(TAG, "Cannot connect to invalid local port. port=%u", mPort);
-                        return;
-                    }
+                    // string command = "localproxy -r " + mEndpoint + " -t " + mAccessToken + " -d " + mDestination;
+                    // // storing logs to file
+                    // command += " 2>&1 | tee /var/log/localproxy.log &";
+                    // LOGM_INFO(TAG, "command=%s", command.c_str());
+                    // int ret = system(command.c_str());
+                    // LOGM_INFO(TAG, "Running localproxy, return %d", ret);
 
-                    mTcpForward = unique_ptr<TcpForward>(new TcpForward(
-                        mSharedCrtResourceManager,
-                        mPort,
-                        bind(&SecureTunnelingContext::OnTcpForwardDataReceive, this, placeholders::_1)));
-                    mTcpForward->Connect();
+                    if (mIsRS485) {
+                        // bind local port to RS485 serial interface
+                        string command = "nc -l 10.3.2.1:503 > /dev/ttymxc2 < /dev/ttymxc2 &";
+                        LOGM_INFO(TAG, "command=%s", command.c_str());
+                        int ret = system(command.c_str());
+                        LOGM_INFO(TAG, "Running netcat, return %d", ret);
+                    }
                 }
 
                 void SecureTunnelingContext::DisconnectFromTcpForward() { mTcpForward.reset(); }
@@ -149,7 +161,7 @@ namespace Aws
                 void SecureTunnelingContext::OnDataReceive(const Crt::ByteBuf &data)
                 {
                     LOGM_DEBUG(TAG, "SecureTunnelingContext::OnDataReceive data.len=%zu", data.len);
-                    mTcpForward->SendData(aws_byte_cursor_from_buf(&data));
+                    // mTcpForward->SendData(aws_byte_cursor_from_buf(&data));
                 }
 
                 void SecureTunnelingContext::OnStreamStart()
@@ -161,19 +173,19 @@ namespace Aws
                 void SecureTunnelingContext::OnStreamReset()
                 {
                     LOG_DEBUG(TAG, "SecureTunnelingContext::OnStreamReset");
-                    DisconnectFromTcpForward();
+                    // DisconnectFromTcpForward();
                 }
 
                 void SecureTunnelingContext::OnSessionReset()
                 {
                     LOG_DEBUG(TAG, "SecureTunnelingContext::OnSessionReset");
-                    DisconnectFromTcpForward();
+                    // DisconnectFromTcpForward();
                 }
 
                 void SecureTunnelingContext::OnTcpForwardDataReceive(const Crt::ByteBuf &data)
                 {
                     LOGM_DEBUG(TAG, "SecureTunnelingContext::OnTcpForwardDataReceive data.len=%zu", data.len);
-                    mSecureTunnel->SendData(aws_byte_cursor_from_buf(&data));
+                    // mSecureTunnel->SendData(aws_byte_cursor_from_buf(&data));
                 }
 
             } // namespace SecureTunneling

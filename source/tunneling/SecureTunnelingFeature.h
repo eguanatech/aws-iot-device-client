@@ -64,6 +64,8 @@ namespace Aws
                      */
                     static uint16_t GetPortFromService(const std::string &service);
 
+                    static std::string GetAddressFromService(const std::string &service);
+
                     /**
                      * \brief Check if the given port is within the valid range
                      *
@@ -114,6 +116,10 @@ namespace Aws
                      */
                     std::string GetEndpoint(const std::string &region);
 
+                    std::string GetDestination(Aws::Crt::Optional<Aws::Crt::Vector<Aws::Crt::String>> services);
+
+                    std::string GetDefaultDestination(const Aws::Crt::Optional<int> port);
+
                     /**
                      * \brief Callback when a secure tunnel is shutdown
                      *
@@ -141,6 +147,8 @@ namespace Aws
                      * \brief A map for converting supported services to their port numbers
                      */
                     static std::map<std::string, uint16_t> mServiceToPortMap;
+
+                    static std::map<std::string, std::string> mServiceToAddressMap;
 
                     /**
                      * \brief The resource manager used to manage CRT resources
@@ -184,6 +192,8 @@ namespace Aws
                      * session.
                      */
                     std::vector<std::unique_ptr<SecureTunnelingContext>> mContexts;
+
+                    bool isRS485{false};
                 };
             } // namespace SecureTunneling
         }     // namespace DeviceClient

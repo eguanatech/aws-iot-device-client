@@ -34,17 +34,18 @@ namespace Aws
                      * @param manager the shared resource manager
                      * @param rootCa path to the Amazon root CA
                      * @param accessToken destination access token for connecting to a secure tunnel
-                     * @param endpoint secure tunneling data plain endpoint
-                     * @param port the local TCP port to connect to
+                     * @param region secure tunneling region
+                     * @param destination destination param to pass to localproxy
                      * @param onConnectionShutdown callback when the secure tunnel is shutdown
                      */
                     SecureTunnelingContext(
                         std::shared_ptr<SharedCrtResourceManager> manager,
                         const std::string &rootCa,
                         const std::string &accessToken,
-                        const std::string &endpoint,
-                        uint16_t port,
-                        OnConnectionShutdownFn onConnectionShutdown);
+                        const std::string &region,
+                        const std::string &destination,
+                        OnConnectionShutdownFn onConnectionShutdown,
+                        const bool isRS485);
 
                     /**
                      * \brief Destructor
@@ -157,14 +158,11 @@ namespace Aws
                     std::string mAccessToken;
 
                     /**
-                     * \brief Secure Tunneling data plain endpoint
+                     * \brief Secure Tunneling region
                      */
-                    std::string mEndpoint;
+                    std::string mRegion;
 
-                    /**
-                     * \brief The local TCP port to connect to
-                     */
-                    uint16_t mPort{22};
+                    std::string mDestination;
 
                     /**
                      * \brief Callback when the secure tunnel is shutdown
@@ -187,6 +185,8 @@ namespace Aws
                      * notifications.
                      */
                     Aws::Crt::Optional<Aws::Iotsecuretunneling::SecureTunnelingNotifyResponse> mLastSeenNotifyResponse;
+
+                    bool mIsRS485;
                 };
             } // namespace SecureTunneling
         }     // namespace DeviceClient
