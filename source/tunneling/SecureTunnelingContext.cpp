@@ -19,20 +19,25 @@ namespace Aws
             namespace SecureTunneling
             {
                 constexpr char SecureTunnelingContext::TAG[];
+                constexpr char SecureTunnelingContext::NETCAT_COMMAND_FORMAT[];
 
                 SecureTunnelingContext::SecureTunnelingContext(
                     shared_ptr<SharedCrtResourceManager> manager,
                     const string &rootCa,
                     const string &accessToken,
                     const string &endpoint,
+                    const string &address,
                     uint16_t port,
+                    bool isTcp,
                     OnConnectionShutdownFn onConnectionShutdown)
                 {
                     mSharedCrtResourceManager = manager;
                     mRootCa = rootCa;
                     mAccessToken = accessToken;
                     mEndpoint = endpoint;
+                    mAddress = address;
                     mPort = port;
+                    mIsTcp = isTcp;
                     mOnConnectionShutdown = onConnectionShutdown;
                 }
 
@@ -117,8 +122,23 @@ namespace Aws
                         return;
                     }
 
+                    if (!SecureTunnelingFeature::IsValidAddress(mAddress))
+                    {
+                        LOGM_ERROR(TAG, "Cannot connect to invalid IP. address=%s", mAddress.c_str());
+                        return;
+                    }
+
+                    if (!mIsTcp)
+                    {
+                        // bind local port to RS485 serial interface
+                        string command = Aws::Iot::DeviceClient::Util::FormatMessage(NETCAT_COMMAND_FORMAT, mAddress.c_str(), mPort);
+                        int ret = system(command.c_str());
+                        LOGM_INFO(TAG, "Running netcat for RS485 connection, return %d", ret);
+                    }
+
                     mTcpForward = unique_ptr<TcpForward>(new TcpForward(
                         mSharedCrtResourceManager,
+                        mAddress,
                         mPort,
                         bind(&SecureTunnelingContext::OnTcpForwardDataReceive, this, placeholders::_1)));
                     mTcpForward->Connect();

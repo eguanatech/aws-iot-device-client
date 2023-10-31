@@ -696,8 +696,12 @@ bool PlainConfig::Tunneling::LoadFromCliArgs(const CliArgs &cliArgs)
         auto service = cliArgs.at(PlainConfig::Tunneling::CLI_TUNNELING_SERVICE);
 #if !defined(EXCLUDE_ST)
         port = SecureTunnelingFeature::GetPortFromService(service);
+        isTcp = SecureTunnelingFeature::IsTcp(service);
+        address = SecureTunnelingFeature::GetAddressFromService(service);
 #else
         port = 0;
+        isTcp = false;
+        address = "";
 #endif
     }
 
@@ -744,6 +748,25 @@ bool PlainConfig::Tunneling::Validate() const
 #endif
     {
         LOGM_ERROR(Config::TAG, "*** %s: port is missing or invalid ***", DeviceClient::DC_FATAL_ERROR);
+        return false;
+    }
+
+#if !defined(EXCLUDE_ST)
+    if (!isTcp.has_value())
+    {
+        LOGM_ERROR(Config::TAG, "*** %s: isTcp is missing ***", DeviceClient::DC_FATAL_ERROR);
+        return false;
+    }
+#endif
+
+    if (!address.has_value()
+#if !defined(EXCLUDE_ST)
+        || !SecureTunnelingFeature::IsValidAddress(address.value()))
+#else
+    )
+#endif
+    {
+        LOGM_ERROR(Config::TAG, "*** %s: address is missing or invalid ***", DeviceClient::DC_FATAL_ERROR);
         return false;
     }
 

@@ -65,12 +65,36 @@ namespace Aws
                     static uint16_t GetPortFromService(const std::string &service);
 
                     /**
+                     * \brief Returns the IP address of the given service
+                     *
+                     * @param service the name of the service
+                     * @return the IP address
+                     */
+                    static std::string GetAddressFromService(std::string service);
+
+                    /**
+                     * \brief Check if the given address is of correct format
+                     *
+                     * @param address the address to check
+                     * @return True if the address is valid. False otherwise.
+                     */
+                    static bool IsValidAddress(std::string address);
+
+                    /**
                      * \brief Check if the given port is within the valid range
                      *
                      * @param port the port to check
                      * @return True if the port is within the valid range. False otherwise.
                      */
                     static bool IsValidPort(int port);
+
+                    /**
+                     * \brief Check if it is a TCP connection
+                     *
+                     * @param service the name of the service
+                     * @return True if the service is TCP. False otherwise.
+                     */
+                    static bool IsTcp(std::string &service);
 
                   private:
                     /**
@@ -127,6 +151,11 @@ namespace Aws
                     //
 
                     /**
+                     * \brief Used to check if TIVA is connected by TCP or not
+                     */
+                    static constexpr char TCP_OPERSTATE_FILE[] = "/sys/class/net/eth3/operstate";
+
+                    /**
                      * \brief Used by the logger to specify that log messages are coming from the Secure Tunneling
                      * feature
                      */
@@ -141,6 +170,11 @@ namespace Aws
                      * \brief A map for converting supported services to their port numbers
                      */
                     static std::map<std::string, uint16_t> mServiceToPortMap;
+
+                    /**
+                     * \brief A map for converting supported services to their IP address
+                     */
+                    static std::map<std::string, std::string> mServiceToAddressMap;
 
                     /**
                      * \brief The resource manager used to manage CRT resources

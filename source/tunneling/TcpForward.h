@@ -36,6 +36,7 @@ namespace Aws
                      */
                     TcpForward(
                         std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager,
+                        std::string address,
                         uint16_t port,
                         OnTcpForwardDataReceive onTcpForwardDataReceive);
 
@@ -122,6 +123,11 @@ namespace Aws
                      * \brief The resource manager used to manage CRT resources
                      */
                     std::shared_ptr<SharedCrtResourceManager> mSharedCrtResourceManager;
+
+                    /**
+                     * \brief The IP address to connect to
+                     */
+                    std::string mAddress;
 
                     /**
                      * \brief The local TCP port to connect to

@@ -171,6 +171,8 @@ namespace Aws
                     Aws::Crt::Optional<std::string> destinationAccessToken;
                     Aws::Crt::Optional<std::string> region;
                     Aws::Crt::Optional<int> port;
+                    Aws::Crt::Optional<std::string> address;
+                    Aws::Crt::Optional<bool> isTcp;
 
                     // Normally the endpoint is determined by `region` only. This is only used to override the normal
                     // endpoint such as when testing against the gamma stage.

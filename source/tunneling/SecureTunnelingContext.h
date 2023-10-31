@@ -43,7 +43,9 @@ namespace Aws
                         const std::string &rootCa,
                         const std::string &accessToken,
                         const std::string &endpoint,
+                        const std::string &address,
                         uint16_t port,
+                        bool isTcp,
                         OnConnectionShutdownFn onConnectionShutdown);
 
                     /**
@@ -142,6 +144,11 @@ namespace Aws
                     static constexpr char TAG[] = "SecureTunnelingContext.cpp";
 
                     /**
+                     * \brief Format string for forming the netcat command
+                     */
+                    static constexpr char NETCAT_COMMAND_FORMAT[] = "nc -l %s:%u > /dev/ttymxc2 < /dev/ttymxc2 &";
+
+                    /**
                      * \brief The resource manager used to manage CRT resources
                      */
                     std::shared_ptr<SharedCrtResourceManager> mSharedCrtResourceManager;
@@ -162,9 +169,19 @@ namespace Aws
                     std::string mEndpoint;
 
                     /**
+                     * \brief The IP address to connect to
+                     */
+                    std::string mAddress;
+
+                    /**
                      * \brief The local TCP port to connect to
                      */
                     uint16_t mPort{22};
+
+                    /**
+                     * \brief Is it a TCP connection?
+                     */
+                    bool mIsTcp{true};
 
                     /**
                      * \brief Callback when the secure tunnel is shutdown
