@@ -5,6 +5,7 @@
 #include "../logging/LoggerFactory.h"
 #include "SecureTunnelingFeature.h"
 #include <aws/iotsecuretunneling/SecureTunnel.h>
+#include <unistd.h>
 
 using namespace std;
 using namespace Aws::Iotsecuretunneling;
@@ -133,6 +134,11 @@ namespace Aws
                         // bind local port to RS485 serial interface
                         string command = Aws::Iot::DeviceClient::Util::FormatMessage(NETCAT_COMMAND_FORMAT, mAddress.c_str(), mPort);
                         int ret = system(command.c_str());
+                        /* Issue found during RS485 TIVA upgrade, looks like the cilent tries to talk to the destination before the netcat is effective.
+                         * Added a one second delay to work around this for now.
+                         */
+                        /* TO-DO: fix this properly */
+                        sleep(1);
                         LOGM_INFO(TAG, "Running netcat for RS485 connection, return %d", ret);
                     }
 
