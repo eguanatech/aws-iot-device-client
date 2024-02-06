@@ -25,6 +25,7 @@ namespace Aws
             class LoadableFromJsonAndCliAndEnvironment
             {
               public:
+                virtual ~LoadableFromJsonAndCliAndEnvironment() = default;
                 virtual bool LoadFromJson(const Crt::JsonView &json) = 0;
                 virtual bool LoadFromCliArgs(const CliArgs &cliArgs) = 0;
                 virtual bool LoadFromEnvironment() = 0;
@@ -107,7 +108,6 @@ namespace Aws
                 Aws::Crt::Optional<std::string> rootCa;
                 Aws::Crt::Optional<std::string> thingName;
 
-                aws_mem_trace_level memTraceLevel{AWS_MEMTRACE_NONE};
                 std::string lockFilePath{DEFAULT_LOCK_FILE_PATH};
 
                 struct LogConfig : public LoadableFromJsonAndCliAndEnvironment
@@ -116,9 +116,9 @@ namespace Aws
                     bool LoadFromCliArgs(const CliArgs &cliArgs) override;
                     bool LoadFromEnvironment() override { return true; }
                     bool Validate() const override;
-                    int ParseDeviceClientLogLevel(std::string value);
-                    Aws::Crt::LogLevel ParseSDKLogLevel(std::string value);
-                    std::string ParseDeviceClientLogType(std::string value);
+                    int ParseDeviceClientLogLevel(const std::string &value) const;
+                    Aws::Crt::LogLevel ParseSDKLogLevel(const std::string &value) const;
+                    std::string ParseDeviceClientLogType(const std::string &value) const;
                     std::string StringifyDeviceClientLogLevel(int level) const;
                     std::string StringifySDKLogLevel(Aws::Crt::LogLevel level) const;
                     /** Serialize logging configurations To Json Object **/
@@ -318,12 +318,14 @@ namespace Aws
                     static constexpr char JSON_PUB_SUB_PUBLISH_FILE[] = "publish-file";
                     static constexpr char JSON_PUB_SUB_SUBSCRIBE_TOPIC[] = "subscribe-topic";
                     static constexpr char JSON_PUB_SUB_SUBSCRIBE_FILE[] = "subscribe-file";
+                    static constexpr char JSON_PUB_SUB_PUBLISH_ON_CHANGE[] = "publish-on-change";
 
                     bool enabled{false};
                     Aws::Crt::Optional<std::string> publishTopic;
                     Aws::Crt::Optional<std::string> publishFile;
                     Aws::Crt::Optional<std::string> subscribeTopic;
                     Aws::Crt::Optional<std::string> subscribeFile;
+                    bool publishOnChange{false};
                 };
                 PubSub pubSub;
 
@@ -505,7 +507,7 @@ namespace Aws
                 static bool CheckTerminalArgs(int argc, char *argv[]);
                 static bool ParseCliArgs(int argc, char *argv[], CliArgs &cliArgs);
                 bool ValidateAndStoreRuntimeConfig();
-                bool ValidateAndStoreHttpProxyConfig();
+                bool ValidateAndStoreHttpProxyConfig() const;
                 bool ParseConfigFile(const std::string &file, ConfigFileType configFileType);
                 bool init(const CliArgs &cliArgs);
 

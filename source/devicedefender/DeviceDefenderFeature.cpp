@@ -29,6 +29,8 @@ constexpr char DeviceDefenderFeature::TOPIC_ACCEPTED[];
 constexpr char DeviceDefenderFeature::TOPIC_REJECTED[];
 constexpr char DeviceDefenderFeature::TOPIC_FORMAT[];
 
+DeviceDefenderFeature::DeviceDefenderFeature() : interval(300) {}
+
 string DeviceDefenderFeature::getName()
 {
     return NAME;
@@ -68,20 +70,20 @@ int DeviceDefenderFeature::init(
 int DeviceDefenderFeature::start()
 {
     startDeviceDefender();
-    baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STARTED);
+    baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STARTED);
     return 0;
 }
 
 int DeviceDefenderFeature::stop()
 {
     stopDeviceDefender();
-    baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STOPPED);
+    baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STOPPED);
     return 0;
 }
 std::shared_ptr<AbstractReportTask> DeviceDefender::DeviceDefenderFeature::createReportTask()
 {
 
-    auto onCancelled = [&](void *userData) -> void {
+    auto onCancelled = [this](void *userData) -> void {
         LOGM_DEBUG(TAG, "task called onCancelled for thing: %s", thingName.c_str());
         stop();
     };
@@ -94,21 +96,20 @@ std::shared_ptr<AbstractReportTask> DeviceDefender::DeviceDefenderFeature::creat
     taskBuilder.WithTaskPeriodSeconds((uint32_t)interval);
     taskBuilder.WithNetworkConnectionSamplePeriodSeconds((uint32_t)interval);
     taskBuilder.WithTaskCancelledHandler(onCancelled);
-    taskBuilder.WithTaskCancellationUserData(NULL);
+    taskBuilder.WithTaskCancellationUserData(nullptr);
 
     LOGM_INFO(TAG, "%s task builder interval: %i", getName().c_str(), interval);
 
     std::shared_ptr<Aws::Iotdevicedefenderv1::ReportTask> reportTask = taskBuilder.Build();
 
-    return std::shared_ptr<AbstractReportTask>(new ReportTaskWrapper(reportTask));
+    return std::make_shared<ReportTaskWrapper>(reportTask);
 }
 void DeviceDefender::DeviceDefenderFeature::subscribeToTopicFilter()
 {
-    auto onRecvData = [&](MqttConnection &connection, const String &topic, const ByteBuf &payload) -> void {
-        LOGM_DEBUG(TAG, "Recv: Topic:(%s), Payload:%s", topic.c_str(), (char *)payload.buffer);
+    auto onRecvData = [](const MqttConnection &, const String &topic, const ByteBuf &payload) -> void {
+        LOGM_DEBUG(TAG, "Recv: Topic:(%s), Payload:%s", topic.c_str(), reinterpret_cast<char *>(payload.buffer));
     };
-    auto onSubAck =
-        [&](MqttConnection &connection, uint16_t packetId, const String &topic, QOS qos, int errorCode) -> void {
+    auto onSubAck = [this](const MqttConnection &, uint16_t, const String &, QOS, int errorCode) -> void {
         LOGM_DEBUG(TAG, "SubAck: PacketId:(%s), ErrorCode:%i", getName().c_str(), errorCode);
     };
     resourceManager->getConnection()->Subscribe(
@@ -124,7 +125,7 @@ void DeviceDefender::DeviceDefenderFeature::subscribeToTopicFilter()
 }
 void DeviceDefender::DeviceDefenderFeature::unsubscribeToTopicFilter()
 {
-    auto onUnsubscribe = [&](MqttConnection &connection, uint16_t packetId, int errorCode) -> void {
+    auto onUnsubscribe = [](const MqttConnection &, uint16_t packetId, int errorCode) -> void {
         LOGM_DEBUG(TAG, "Unsubscribing: PacketId:%i, ErrorCode:%i", packetId, errorCode);
     };
     resourceManager->getConnection()->Unsubscribe(

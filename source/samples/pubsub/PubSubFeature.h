@@ -33,7 +33,10 @@ namespace Aws
                     static constexpr char DEFAULT_PUBLISH_FILE[] = "~/.aws-iot-device-client/pubsub/publish-file.txt";
                     static constexpr char DEFAULT_SUBSCRIBE_FILE[] =
                         "~/.aws-iot-device-client/pubsub/subscribe-file.txt";
-                    bool createPubSub(const PlainConfig &config, std::string absFilePath, const aws_byte_buf *payload);
+                    bool createPubSub(
+                        const PlainConfig &config,
+                        const std::string &absFilePath,
+                        const aws_byte_buf *payload) const;
                     /**
                      * \brief Initializes the PubSub feature with all the required setup information, event
                      * handlers, and the SharedCrtResourceManager
@@ -71,7 +74,10 @@ namespace Aws
                      * attention
                      */
                     std::shared_ptr<ClientBaseNotifier> baseNotifier;
-
+                    /**
+                     * \brief Whether the DeviceClient base has requested this feature to stop.
+                     */
+                    std::atomic<bool> needStop{false};
                     /**
                      * \brief Topic for publishing data to
                      */
@@ -80,6 +86,10 @@ namespace Aws
                      * \brief Location of file containing data to publish
                      */
                     std::string pubFile = DEFAULT_PUBLISH_FILE;
+                    /**
+                     * \brief Whether or not to start the inotify thread to republish changes.
+                     */
+                    bool publishOnChange = false;
                     /**
                      * \brief Topic to subscribe to
                      */
@@ -91,12 +101,11 @@ namespace Aws
                     /**
                      * \brief Default payload if no publish file was provided
                      */
-                    const std::string DEFAULT_PUBLISH_PAYLOAD = "Hello World!";
+                    static const std::string DEFAULT_PUBLISH_PAYLOAD;
                     /**
                      * \brief Subscription payload used to retrigger the publish actions
                      */
-                    const std::string PUBLISH_TRIGGER_PAYLOAD = "DC-Publish";
-
+                    static const std::string PUBLISH_TRIGGER_PAYLOAD;
                     /**
                      * \brief Workflow function for publishing data to the configured topic
                      */
@@ -106,7 +115,13 @@ namespace Aws
                      * @param buf Buffer to read data into
                      * @return 0 on success
                      */
-                    int getPublishFileData(aws_byte_buf *buf);
+                    int getPublishFileData(aws_byte_buf *buf) const;
+                    /**
+                     * \brief A file monitor to detect any changes related to the input file.
+                     * Once any data is modified in the publish-file, the client will publish
+                     * the data to the publish-topic.
+                     */
+                    void runFileMonitor();
                 };
             } // namespace Samples
         }     // namespace DeviceClient

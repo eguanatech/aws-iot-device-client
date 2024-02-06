@@ -10,8 +10,11 @@
 #include <aws/iotdevicecommon/IotDevice.h>
 #include <iostream>
 #include <sys/stat.h>
-
+#include <thread>
+#include <unistd.h>
 #include <utility>
+
+#include <sys/inotify.h>
 
 using namespace std;
 using namespace Aws;
@@ -28,14 +31,24 @@ constexpr char PubSubFeature::NAME[];
 constexpr char PubSubFeature::DEFAULT_PUBLISH_FILE[];
 constexpr char PubSubFeature::DEFAULT_SUBSCRIBE_FILE[];
 
-#define MAX_IOT_CORE_MQTT_MESSAGE_SIZE_BYTES 128000
+constexpr size_t MAX_IOT_CORE_MQTT_MESSAGE_SIZE_BYTES = 128000;
+// Definitions for inode notify
+constexpr size_t MAX_EVENTS = 1000; /* Maximum number of events to process */
+constexpr size_t LEN_NAME = 16;     /* Assuming that the length of the filename won't exceed 16 bytes */
+constexpr size_t EVENT_SIZE = (sizeof(struct inotify_event)); /* size of one event */
+constexpr size_t EVENT_BUFSIZE =
+    (MAX_EVENTS * (EVENT_SIZE + LEN_NAME)); /* size of buffer used to store the data of events */
+
+const std::string PubSubFeature::DEFAULT_PUBLISH_PAYLOAD = R"({"Hello": "World!"})";
+const std::string PubSubFeature::PUBLISH_TRIGGER_PAYLOAD = "DC-Publish";
 
 string PubSubFeature::getName()
 {
     return NAME;
 }
 
-bool PubSubFeature::createPubSub(const PlainConfig &config, std::string filePath, const aws_byte_buf *payload)
+bool PubSubFeature::createPubSub(const PlainConfig &config, const std::string &filePath, const aws_byte_buf *payload)
+    const
 {
     std::string pubSubFileDir = FileUtils::ExtractParentDirectory(filePath);
     LOGM_INFO(TAG, "Creating Pub/Sub file: %s", filePath.c_str());
@@ -71,7 +84,7 @@ bool PubSubFeature::createPubSub(const PlainConfig &config, std::string filePath
             return false;
         }
         // Write payload data in newly created empty file.
-        if (payload != NULL)
+        if (payload != nullptr)
         {
             FileUtils::WriteToFile(filePath, payload);
         }
@@ -105,6 +118,7 @@ int PubSubFeature::init(
     thingName = *config.thingName;
     pubTopic = config.pubSub.publishTopic.value();
     subTopic = config.pubSub.subscribeTopic.value();
+    publishOnChange = config.pubSub.publishOnChange;
 
     if (config.pubSub.publishFile.has_value() && !config.pubSub.publishFile->empty())
     {
@@ -126,7 +140,7 @@ int PubSubFeature::init(
     }
     subFile = FileUtils::ExtractExpandedPath(subFile);
 
-    if (!createPubSub(config, subFile, NULL))
+    if (!createPubSub(config, subFile, nullptr))
     {
         LOG_ERROR(TAG, "Failed to create subscribe directory or file");
     }
@@ -134,7 +148,74 @@ int PubSubFeature::init(
     return AWS_OP_SUCCESS;
 }
 
-int PubSubFeature::getPublishFileData(aws_byte_buf *buf)
+void PubSubFeature::runFileMonitor()
+{
+    int len = 0;
+    int fd = 0;
+    int dir_wd = 0;
+    int file_wd = 0;
+    char buf[EVENT_BUFSIZE];
+    fd = inotify_init();
+
+    string fileDir = FileUtils::ExtractParentDirectory(pubFile.c_str());
+    string fileName = pubFile.substr(fileDir.length());
+
+    if (fd == -1)
+    {
+        LOGM_ERROR(TAG, "Encountered error %d while initializing the inode notify system return s%", fd);
+        return;
+    }
+
+    dir_wd = inotify_add_watch(fd, fileDir.c_str(), IN_CREATE);
+    if (dir_wd == -1)
+    {
+        LOGM_ERROR(TAG, "Encountered error %d while adding the watch for input file's parent directory", fd);
+        goto exit;
+    }
+
+    file_wd = inotify_add_watch(fd, pubFile.c_str(), IN_CLOSE_WRITE);
+    if (file_wd == -1)
+    {
+        LOGM_ERROR(TAG, "Encountered error %d while adding the watch for target file", fd);
+        goto exit;
+    }
+
+    while (!needStop.load())
+    {
+        len = read(fd, buf, EVENT_BUFSIZE);
+        if (len <= 0)
+        {
+            LOG_WARN(TAG, "Couldn't monitor any more target file modify events as it reaches max read buffer size");
+            break;
+        }
+
+        for (int i = 0; i < len;)
+        {
+            struct inotify_event *e = (struct inotify_event *)&buf[i];
+
+            if (e->mask & IN_CREATE && strcmp(e->name, fileName.c_str()) == 0 && !(e->mask & IN_ISDIR))
+            {
+                LOG_DEBUG(TAG, "New file is created with the same name of the target file.");
+                publishFileData();
+                file_wd = inotify_add_watch(fd, pubFile.c_str(), IN_CLOSE_WRITE);
+            }
+            else if (e->mask & IN_CLOSE_WRITE)
+            {
+                LOG_DEBUG(TAG, "The target file is modified, start updating the shadow");
+                publishFileData();
+            }
+
+            i += EVENT_SIZE + e->len;
+        }
+        this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+exit:
+    inotify_rm_watch(fd, file_wd);
+    inotify_rm_watch(fd, dir_wd);
+    close(fd);
+}
+
+int PubSubFeature::getPublishFileData(aws_byte_buf *buf) const
 {
     size_t publishFileSize = FileUtils::GetFileSize(pubFile);
     if (publishFileSize > MAX_IOT_CORE_MQTT_MESSAGE_SIZE_BYTES)
@@ -168,7 +249,7 @@ void PubSubFeature::publishFileData()
         aws_byte_buf_clean_up_secure(&payload);
         return;
     }
-    auto onPublishComplete = [payload, this](Mqtt::MqttConnection &, uint16_t packetId, int errorCode) mutable {
+    auto onPublishComplete = [payload, this](const Mqtt::MqttConnection &, uint16_t, int errorCode) mutable {
         LOGM_DEBUG(TAG, "PublishCompAck: PacketId:(%s), ErrorCode:%d", getName().c_str(), errorCode);
         aws_byte_buf_clean_up_secure(&payload);
     };
@@ -180,22 +261,18 @@ int PubSubFeature::start()
 {
     LOGM_INFO(TAG, "Starting %s", getName().c_str());
 
-    auto onSubAck =
-        [&](MqttConnection &connection, uint16_t packetId, const String &topic, QOS qos, int errorCode) -> void {
+    auto onSubAck = [this](const MqttConnection &, uint16_t, const String &, QOS, int errorCode) -> void {
         LOGM_DEBUG(TAG, "SubAck: PacketId:(%s), ErrorCode:%d", getName().c_str(), errorCode);
     };
-    auto onRecvData = [&](MqttConnection &connection, const String &topic, const ByteBuf &payload) -> void {
+    auto onRecvData = [this](const MqttConnection &, const String &, const ByteBuf &payload) -> void {
         LOGM_DEBUG(TAG, "Message received on subscribe topic, size: %zu bytes", payload.len);
-        if (string((char *)payload.buffer, payload.len) == PUBLISH_TRIGGER_PAYLOAD)
+        if (string(reinterpret_cast<char *>(payload.buffer), payload.len) == PUBLISH_TRIGGER_PAYLOAD)
         {
             publishFileData();
         }
-        if (subFile != "")
+        if (subFile != "" && FileUtils::WriteToFile(subFile, &payload) != 0)
         {
-            if (FileUtils::WriteToFile(subFile, &payload) != 0)
-            {
-                LOG_ERROR(TAG, "Failure writing incoming payload to subscribe file... Skipping");
-            }
+            LOG_ERROR(TAG, "Failure writing incoming payload to subscribe file... Skipping");
         }
     };
 
@@ -205,17 +282,25 @@ int PubSubFeature::start()
     // is received
     publishFileData();
 
-    baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STARTED);
+    if (publishOnChange)
+    {
+        thread file_monitor_thread(&PubSubFeature::runFileMonitor, this);
+        file_monitor_thread.detach();
+    }
+
+    baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STARTED);
     return AWS_OP_SUCCESS;
 }
 
 int PubSubFeature::stop()
 {
-    auto onUnsubscribe = [&](MqttConnection &connection, uint16_t packetId, int errorCode) -> void {
+    needStop.store(true);
+
+    auto onUnsubscribe = [](const MqttConnection &, uint16_t packetId, int errorCode) -> void {
         LOGM_DEBUG(TAG, "Unsubscribing: PacketId:%u, ErrorCode:%d", packetId, errorCode);
     };
 
     resourceManager->getConnection()->Unsubscribe(subTopic.c_str(), onUnsubscribe);
-    baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STOPPED);
+    baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STOPPED);
     return AWS_OP_SUCCESS;
 }

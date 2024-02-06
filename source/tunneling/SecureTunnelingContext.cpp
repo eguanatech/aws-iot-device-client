@@ -33,6 +33,20 @@ namespace Aws
                 {
                 }
 
+                SecureTunnelingContext::SecureTunnelingContext(
+                    shared_ptr<SharedCrtResourceManager> manager,
+                    const Aws::Crt::Http::HttpClientConnectionProxyOptions &proxyOptions,
+                    const Aws::Crt::Optional<std::string> &rootCa,
+                    const string &accessToken,
+                    const string &endpoint,
+                    const int port,
+                    const OnConnectionShutdownFn &onConnectionShutdown)
+                    : mSharedCrtResourceManager(manager), mProxyOptions(proxyOptions),
+                      mRootCa(rootCa.has_value() ? rootCa.value() : ""), mAccessToken(accessToken), mEndpoint(endpoint),
+                      mPort(port), mOnConnectionShutdown(onConnectionShutdown)
+                {
+                }
+
                 SecureTunnelingContext::~SecureTunnelingContext()
                 {
                     if (mSecureTunnel && mSecureTunnel->IsValid())
@@ -126,7 +140,7 @@ namespace Aws
 
                 void SecureTunnelingContext::DisconnectFromTcpForward() { mTcpForward.reset(); }
 
-                void SecureTunnelingContext::OnConnectionComplete()
+                void SecureTunnelingContext::OnConnectionComplete() const
                 {
                     LOG_DEBUG(TAG, "SecureTunnelingContext::OnConnectionComplete");
                 }
@@ -137,7 +151,7 @@ namespace Aws
                     mOnConnectionShutdown(this);
                 }
 
-                void SecureTunnelingContext::OnSendDataComplete(int errorCode)
+                void SecureTunnelingContext::OnSendDataComplete(int errorCode) const
                 {
                     LOG_DEBUG(TAG, "SecureTunnelingContext::OnSendDataComplete");
                     if (errorCode)
@@ -146,7 +160,7 @@ namespace Aws
                     }
                 }
 
-                void SecureTunnelingContext::OnDataReceive(const Crt::ByteBuf &data)
+                void SecureTunnelingContext::OnDataReceive(const Crt::ByteBuf &data) const
                 {
                     LOGM_DEBUG(TAG, "SecureTunnelingContext::OnDataReceive data.len=%zu", data.len);
                     mTcpForward->SendData(aws_byte_cursor_from_buf(&data));
@@ -170,7 +184,7 @@ namespace Aws
                     DisconnectFromTcpForward();
                 }
 
-                void SecureTunnelingContext::OnTcpForwardDataReceive(const Crt::ByteBuf &data)
+                void SecureTunnelingContext::OnTcpForwardDataReceive(const Crt::ByteBuf &data) const
                 {
                     LOGM_DEBUG(TAG, "SecureTunnelingContext::OnTcpForwardDataReceive data.len=%zu", data.len);
                     mSecureTunnel->SendData(aws_byte_cursor_from_buf(&data));
@@ -183,37 +197,60 @@ namespace Aws
                 }
 
                 std::shared_ptr<SecureTunnelWrapper> SecureTunnelingContext::CreateSecureTunnel(
-                    Aws::Iotsecuretunneling::OnConnectionComplete onConnectionComplete,
-                    Aws::Iotsecuretunneling::OnConnectionShutdown onConnectionShutdown,
-                    Aws::Iotsecuretunneling::OnSendDataComplete onSendDataComplete,
-                    Aws::Iotsecuretunneling::OnDataReceive onDataReceive,
-                    Aws::Iotsecuretunneling::OnStreamStart onStreamStart,
-                    Aws::Iotsecuretunneling::OnStreamReset onStreamReset,
-                    Aws::Iotsecuretunneling::OnSessionReset onSessionReset)
+                    const Aws::Iotsecuretunneling::OnConnectionComplete &onConnectionComplete,
+                    const Aws::Iotsecuretunneling::OnConnectionShutdown &onConnectionShutdown,
+                    const Aws::Iotsecuretunneling::OnSendDataComplete &onSendDataComplete,
+                    const Aws::Iotsecuretunneling::OnDataReceive &onDataReceive,
+                    const Aws::Iotsecuretunneling::OnStreamStart &onStreamStart,
+                    const Aws::Iotsecuretunneling::OnStreamReset &onStreamReset,
+                    const Aws::Iotsecuretunneling::OnSessionReset &onSessionReset)
                 {
-                    return std::shared_ptr<SecureTunnelWrapper>(new SecureTunnelWrapper(
-                        mSharedCrtResourceManager->getAllocator(),
-                        mSharedCrtResourceManager->getClientBootstrap(),
-                        Crt::Io::SocketOptions(),
-                        mAccessToken,
-                        AWS_SECURE_TUNNELING_DESTINATION_MODE,
-                        mEndpoint,
-                        mRootCa,
-                        onConnectionComplete,
-                        onConnectionShutdown,
-                        onSendDataComplete,
-                        onDataReceive,
-                        onStreamStart,
-                        onStreamReset,
-                        onSessionReset));
+                    if (mProxyOptions.HostName.length() > 0)
+                    {
+                        LOGM_INFO(TAG, "Creating Secure Tunneling with proxy to: %s", mProxyOptions.HostName.c_str());
+                        return std::make_shared<SecureTunnelWrapper>(
+                            mSharedCrtResourceManager->getAllocator(),
+                            mSharedCrtResourceManager->getClientBootstrap(),
+                            Crt::Io::SocketOptions(),
+                            mProxyOptions,
+                            mAccessToken,
+                            AWS_SECURE_TUNNELING_DESTINATION_MODE,
+                            mEndpoint,
+                            mRootCa,
+                            onConnectionComplete,
+                            nullptr, // TODO: long term fix needed for onConnectionShutdown callback
+                            onSendDataComplete,
+                            onDataReceive,
+                            onStreamStart,
+                            onStreamReset,
+                            onSessionReset);
+                    }
+                    else
+                    {
+                        return std::make_shared<SecureTunnelWrapper>(
+                            mSharedCrtResourceManager->getAllocator(),
+                            mSharedCrtResourceManager->getClientBootstrap(),
+                            Crt::Io::SocketOptions(),
+                            mAccessToken,
+                            AWS_SECURE_TUNNELING_DESTINATION_MODE,
+                            mEndpoint,
+                            mRootCa,
+                            onConnectionComplete,
+                            nullptr, // TODO: long term fix needed for onConnectionShutdown callback
+                            onSendDataComplete,
+                            onDataReceive,
+                            onStreamStart,
+                            onStreamReset,
+                            onSessionReset);
+                    }
                 }
 
                 std::shared_ptr<TcpForward> SecureTunnelingContext::CreateTcpForward()
                 {
-                    return std::shared_ptr<TcpForward>(new TcpForward(
+                    return std::make_shared<TcpForward>(
                         mSharedCrtResourceManager,
                         mPort,
-                        bind(&SecureTunnelingContext::OnTcpForwardDataReceive, this, placeholders::_1)));
+                        bind(&SecureTunnelingContext::OnTcpForwardDataReceive, this, placeholders::_1));
                 }
             } // namespace SecureTunneling
         }     // namespace DeviceClient

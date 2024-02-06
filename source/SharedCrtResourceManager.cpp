@@ -39,12 +39,32 @@ bool SharedCrtResourceManager::initialize(
     std::shared_ptr<Util::FeatureRegistry> featureRegistry)
 {
     features = featureRegistry;
-    initializeAllocator(config);
     initialized = buildClient(config) == SharedCrtResourceManager::SUCCESS;
     return initialized;
 }
 
-bool SharedCrtResourceManager::locateCredentials(const PlainConfig &config)
+void SharedCrtResourceManager::loadMemTraceLevelFromEnvironment()
+{
+    const char *memTraceLevelStr = std::getenv("AWS_CRT_MEMORY_TRACING");
+    if (memTraceLevelStr)
+    {
+        switch (atoi(memTraceLevelStr))
+        {
+            case AWS_MEMTRACE_BYTES:
+                LOG_DEBUG(Config::TAG, "Set AWS_CRT_MEMORY_TRACING=AWS_MEMTRACE_BYTES");
+                memTraceLevel = AWS_MEMTRACE_BYTES;
+                break;
+            case AWS_MEMTRACE_STACKS:
+                LOG_DEBUG(Config::TAG, "Set AWS_CRT_MEMORY_TRACING=AWS_MEMTRACE_STACKS");
+                memTraceLevel = AWS_MEMTRACE_STACKS;
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+bool SharedCrtResourceManager::locateCredentials(const PlainConfig &config) const
 {
     struct stat fileInfo;
     bool locatedAll = true;
@@ -109,7 +129,7 @@ bool SharedCrtResourceManager::locateCredentials(const PlainConfig &config)
     return locatedAll;
 }
 
-bool SharedCrtResourceManager::setupLogging(const PlainConfig &config)
+bool SharedCrtResourceManager::setupLogging(const PlainConfig &config) const
 {
     // Absolute path to the sdk log file.
     std::string logFilePath{DEFAULT_SDK_LOG_FILE};
@@ -174,22 +194,24 @@ bool SharedCrtResourceManager::setupLogging(const PlainConfig &config)
     return true;
 }
 
-void SharedCrtResourceManager::initializeAllocator(const PlainConfig &config)
+void SharedCrtResourceManager::initializeAllocator()
 {
+    loadMemTraceLevelFromEnvironment();
     allocator = aws_default_allocator();
-    memTraceLevel = config.memTraceLevel;
+
     if (memTraceLevel != AWS_MEMTRACE_NONE)
     {
         // If memTraceLevel == AWS_MEMTRACE_STACKS(2), then by default 8 frames per stack are used.
         allocator = aws_mem_tracer_new(allocator, nullptr, memTraceLevel, 0);
     }
+
+    // We MUST declare an instance of the ApiHandle to perform global initialization
+    // of the SDK libraries
+    apiHandle = unique_ptr<ApiHandle>(new ApiHandle());
 }
 
 int SharedCrtResourceManager::buildClient(const PlainConfig &config)
 {
-    // We MUST declare an instance of the ApiHandle to perform global initialization
-    // of the SDK libraries
-    apiHandle = unique_ptr<ApiHandle>(new ApiHandle());
     if (config.logConfig.sdkLoggingEnabled)
     {
         if (!setupLogging(config))
@@ -318,12 +340,13 @@ int SharedCrtResourceManager::establishConnection(const PlainConfig &config)
     {
         proxyOptions.HostName = proxyConfig.proxyHost->c_str();
         proxyOptions.Port = proxyConfig.proxyPort.value();
+        proxyOptions.ProxyConnectionType = Aws::Crt::Http::AwsHttpProxyConnectionType::Tunneling;
 
         LOGM_INFO(
             TAG,
             "Attempting to establish MQTT connection with proxy: %s:%u",
-            proxyConfig.proxyHost->c_str(),
-            proxyConfig.proxyPort.value());
+            proxyOptions.HostName.c_str(),
+            proxyOptions.Port);
 
         if (proxyConfig.httpProxyAuthEnabled)
         {
@@ -370,7 +393,8 @@ int SharedCrtResourceManager::establishConnection(const PlainConfig &config)
     /*
      * This will execute when an mqtt connect has completed or failed.
      */
-    auto onConnectionCompleted = [&](Mqtt::MqttConnection &, int errorCode, Mqtt::ReturnCode returnCode, bool) {
+    auto onConnectionCompleted = [this, &connectionCompletedPromise](
+                                     const Mqtt::MqttConnection &, int errorCode, Mqtt::ReturnCode returnCode, bool) {
         if (errorCode)
         {
             LOGM_ERROR(TAG, "MQTT Connection failed with error: %s", ErrorDebugString(errorCode));
@@ -394,7 +418,7 @@ int SharedCrtResourceManager::establishConnection(const PlainConfig &config)
     /*
      * Invoked when a disconnect message has completed.
      */
-    auto onDisconnect = [&](Mqtt::MqttConnection & /*conn*/) {
+    auto onDisconnect = [this](const Mqtt::MqttConnection & /*conn*/) {
         {
             LOG_INFO(TAG, "MQTT Connection is now disconnected");
             connectionClosedPromise.set_value();
@@ -404,7 +428,7 @@ int SharedCrtResourceManager::establishConnection(const PlainConfig &config)
     /*
      * Invoked when connection is interrupted.
      */
-    auto OnConnectionInterrupted = [&](Mqtt::MqttConnection &, int errorCode) {
+    auto OnConnectionInterrupted = [this](const Mqtt::MqttConnection &, int errorCode) {
         {
             if (errorCode)
             {
@@ -420,7 +444,7 @@ int SharedCrtResourceManager::establishConnection(const PlainConfig &config)
     /*
      * Invoked when connection is resumed.
      */
-    auto OnConnectionResumed = [&](Mqtt::MqttConnection &, int returnCode, bool) {
+    auto OnConnectionResumed = [this](const Mqtt::MqttConnection &, int returnCode, bool) {
         {
             LOGM_INFO(TAG, "MQTT connection resumed with return code: %d", returnCode);
         }
@@ -515,6 +539,11 @@ Aws::Crt::Io::ClientBootstrap *SharedCrtResourceManager::getClientBootstrap()
 void SharedCrtResourceManager::disconnect()
 {
     LOG_DEBUG(TAG, "Attempting to disconnect MQTT connection");
+    if (connection == NULL)
+    {
+        return;
+    }
+
     if (connection->Disconnect())
     {
         if (connectionClosedPromise.get_future().wait_for(std::chrono::seconds(DEFAULT_WAIT_TIME_SECONDS)) ==
@@ -529,7 +558,7 @@ void SharedCrtResourceManager::disconnect()
     }
 }
 
-void SharedCrtResourceManager::startDeviceClientFeatures()
+void SharedCrtResourceManager::startDeviceClientFeatures() const
 {
     LOG_INFO(TAG, "Starting Device Client features.");
     features->startAll();

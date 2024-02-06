@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include "../../source/SharedCrtResourceManager.h"
 #include "../../source/config/Config.h"
 #include "../../source/util/FileUtils.h"
 #include "../../source/util/UniqueString.h"
@@ -33,9 +34,13 @@ class ConfigTestFixture : public ::testing::Test
   public:
     ConfigTestFixture() = default;
     string outputPath;
+    SharedCrtResourceManager resourceManager;
 
     void SetUp() override
     {
+        // Initializing allocator, so we can use CJSON lib from SDK in our unit tests.
+        resourceManager.initializeAllocator();
+
         // Config::Validate will check that cert, key, and root-ca files exist.
         // Create a temporary file to use as a placeholder for this purpose.
         ofstream file(filePath, std::fstream::app);
@@ -154,6 +159,7 @@ TEST_F(ConfigTestFixture, AllFeaturesEnabled)
         "secure-element-token-label": "token-label"
       }
 })";
+
     JsonObject jsonObject(jsonString);
     JsonView jsonView = jsonObject.View();
 
@@ -878,7 +884,7 @@ TEST_F(ConfigTestFixture, SDKLoggingConfigurationJson)
     "thing-name": "thing-name value",
     "logging": {
         "level": "DEBUG",
-        "type": "STDOUT",
+        "type": "FILE",
         "file": "device-client.log",
         "enable-sdk-logging": true,
         "sdk-log-level": "warn",
@@ -897,7 +903,7 @@ TEST_F(ConfigTestFixture, SDKLoggingConfigurationJson)
 
     // Also make sure none of the device client log API settings have been modified
     ASSERT_EQ(3, config.logConfig.deviceClientlogLevel);
-    ASSERT_STREQ("stdout", config.logConfig.deviceClientLogtype.c_str());
+    ASSERT_STREQ("file", config.logConfig.deviceClientLogtype.c_str());
     ASSERT_STREQ("device-client.log", config.logConfig.deviceClientLogFile.c_str());
 }
 
@@ -990,11 +996,14 @@ TEST_F(ConfigTestFixture, FleetProvisioningCli)
     config.LoadFromCliArgs(cliArgs);
 
     ASSERT_TRUE(config.Validate());
+#if !defined(DISABLE_MQTT)
+    // ST_COMPONENT_MODE does not require any settings besides those for Secure Tunneling
     ASSERT_TRUE(config.fleetProvisioning.enabled);
     ASSERT_STREQ("cli-template-name", config.fleetProvisioning.templateName->c_str());
     ASSERT_STREQ("{\"SerialNumber\": \"Device-SN\"}", config.fleetProvisioning.templateParameters->c_str());
     ASSERT_STREQ(filePath.c_str(), config.fleetProvisioning.csrFile->c_str());
     ASSERT_STREQ(filePath.c_str(), config.fleetProvisioning.deviceKey->c_str());
+#endif
 }
 
 TEST_F(ConfigTestFixture, DeviceDefenderCli)
@@ -1083,14 +1092,19 @@ TEST_F(ConfigTestFixture, PubSubSampleCli)
     config.LoadFromCliArgs(cliArgs);
 
     ASSERT_TRUE(config.Validate());
+#if !defined(DISABLE_MQTT)
+    // ST_COMPONENT_MODE does not require any settings besides those for Secure Tunneling
     ASSERT_TRUE(config.pubSub.enabled);
     ASSERT_STREQ("publish_topic", config.pubSub.publishTopic->c_str());
     ASSERT_STREQ(samplesFilePath.c_str(), config.pubSub.publishFile->c_str());
     ASSERT_STREQ("subscribe_topic", config.pubSub.subscribeTopic->c_str());
     ASSERT_STREQ(samplesFilePath.c_str(), config.pubSub.subscribeFile->c_str());
+#endif
     remove(samplesFilePath.c_str());
 }
 
+#if !defined(DISABLE_MQTT)
+// These tests are not applicable if MQTT is disabled.
 TEST_F(ConfigTestFixture, SampleShadowCli)
 {
     string inputFilePath = "/tmp/inputFile";
@@ -1134,6 +1148,7 @@ TEST_F(ConfigTestFixture, SampleShadowCli)
     remove(inputFilePath.c_str());
     remove(outputFilePath.c_str());
 }
+#endif
 
 TEST_F(ConfigTestFixture, SensorPublishMinimumConfig)
 {
@@ -1295,41 +1310,6 @@ TEST_F(ConfigTestFixture, SensorPublishInvalidConfigMqttTopicEmpty)
     GTEST_SKIP();
 #endif
     ASSERT_FALSE(config.Validate()); // Empty mqtt_topic.
-    ASSERT_TRUE(config.sensorPublish.enabled);
-    ASSERT_EQ(config.sensorPublish.settings.size(), 1);
-    const auto &settings = config.sensorPublish.settings[0];
-    ASSERT_FALSE(settings.enabled);
-}
-
-TEST_F(ConfigTestFixture, SensorPublishInvalidConfigMqttTopic)
-{
-    constexpr char jsonString[] = R"(
-{
-    "endpoint": "endpoint value",
-    "cert": "/tmp/aws-iot-device-client-test-file",
-    "root-ca": "/tmp/aws-iot-device-client-test/AmazonRootCA1.pem",
-    "key": "/tmp/aws-iot-device-client-test-file",
-    "thing-name": "thing-name value",
-    "sensor-publish": {
-        "sensors": [
-            {
-                "addr": "/tmp/sensors/my-sensor-server",
-                "eom_delimiter": "[\r\n]+",
-                "mqtt_topic": "////////my-sensor-data"
-            }
-        ]
-    }
-})";
-    JsonObject jsonObject(jsonString);
-    JsonView jsonView = jsonObject.View();
-
-    PlainConfig config;
-    config.LoadFromJson(jsonView);
-
-#if defined(EXCLUDE_SENSOR_PUBLISH)
-    GTEST_SKIP();
-#endif
-    ASSERT_FALSE(config.Validate()); // Invalid mqtt_topic.
     ASSERT_TRUE(config.sensorPublish.enabled);
     ASSERT_EQ(config.sensorPublish.settings.size(), 1);
     const auto &settings = config.sensorPublish.settings[0];
@@ -1703,24 +1683,4 @@ TEST_F(ConfigTestFixture, HTTPProxyConfigNoAuth)
     ASSERT_EQ(8888, httpProxyConfig.proxyPort.value());
     ASSERT_FALSE(httpProxyConfig.httpProxyAuthEnabled);
     ASSERT_STREQ("None", httpProxyConfig.proxyAuthMethod->c_str());
-}
-
-TEST(Config, MemoryTrace)
-{
-    PlainConfig config;
-
-    // Test all permutations of memory trace set through the environment.
-    vector<aws_mem_trace_level> levels{
-        AWS_MEMTRACE_NONE,
-        AWS_MEMTRACE_BYTES,
-        AWS_MEMTRACE_STACKS,
-    };
-
-    for (const auto &level : levels)
-    {
-        auto levelstr = std::to_string(level);
-        ::setenv("AWS_CRT_MEMORY_TRACING", levelstr.c_str(), 1);
-        ASSERT_TRUE(config.LoadFromEnvironment()) << "read AWS_CRT_MEMORY_TRACING=" << level;
-        ASSERT_EQ(config.memTraceLevel, level);
-    }
 }

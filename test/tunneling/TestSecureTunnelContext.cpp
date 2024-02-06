@@ -33,13 +33,13 @@ class MockSecureTunnelingContext : public SecureTunnelingContext
     MOCK_METHOD(
         std::shared_ptr<SecureTunnelWrapper>,
         CreateSecureTunnel,
-        (Aws::Iotsecuretunneling::OnConnectionComplete onConnectionComplete,
-         Aws::Iotsecuretunneling::OnConnectionShutdown onConnectionShutdown,
-         Aws::Iotsecuretunneling::OnSendDataComplete onSendDataComplete,
-         Aws::Iotsecuretunneling::OnDataReceive onDataReceive,
-         Aws::Iotsecuretunneling::OnStreamStart onStreamStart,
-         Aws::Iotsecuretunneling::OnStreamReset onStreamReset,
-         Aws::Iotsecuretunneling::OnSessionReset onSessionReset),
+        (const Aws::Iotsecuretunneling::OnConnectionComplete &onConnectionComplete,
+         const Aws::Iotsecuretunneling::OnConnectionShutdown &onConnectionShutdown,
+         const Aws::Iotsecuretunneling::OnSendDataComplete &onSendDataComplete,
+         const Aws::Iotsecuretunneling::OnDataReceive &onDataReceive,
+         const Aws::Iotsecuretunneling::OnStreamStart &onStreamStart,
+         const Aws::Iotsecuretunneling::OnStreamReset &onStreamReset,
+         const Aws::Iotsecuretunneling::OnSessionReset &onSessionReset),
         (override));
 
     MOCK_METHOD(std::shared_ptr<TcpForward>, CreateTcpForward, (), (override));
@@ -59,7 +59,10 @@ class MockSecureTunnel : public SecureTunnelWrapper
 class MockTcpForward : public TcpForward
 {
   public:
-    MockTcpForward() : TcpForward() {}
+    MockTcpForward(std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager, uint16_t port)
+        : TcpForward(sharedCrtResourceManager, port)
+    {
+    }
     MOCK_METHOD(int, Connect, (), (override));
     MOCK_METHOD(int, SendData, (const Crt::ByteCursor &data), (override));
 };
@@ -71,7 +74,7 @@ class TestSecureTunnelContext : public testing::Test
     {
         manager = shared_ptr<SharedCrtResourceManager>(new SharedCrtResourceManager());
         tunnel = shared_ptr<MockSecureTunnel>(new MockSecureTunnel());
-        tcpForward = shared_ptr<MockTcpForward>(new MockTcpForward());
+        tcpForward = shared_ptr<MockTcpForward>(new MockTcpForward(manager, port));
         rootCa = "root-ca-value";
         accessToken = "access-token-value";
         endpoint = "endpoint-value";

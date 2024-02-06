@@ -54,7 +54,7 @@ void JobsFeature::ackSubscribeToNextJobChanged(int ioError)
     }
 }
 
-void JobsFeature::ackStartNextPendingJobPub(int ioError)
+void JobsFeature::ackStartNextPendingJobPub(int ioError) const
 {
     LOGM_DEBUG(TAG, "Ack received for StartNextPendingJobPub with code {%d}", ioError);
 }
@@ -83,7 +83,7 @@ void JobsFeature::ackSubscribeToStartNextJobRejected(int ioError)
     }
 }
 
-void JobsFeature::ackUpdateJobExecutionStatus(int ioError)
+void JobsFeature::ackUpdateJobExecutionStatus(int ioError) const
 {
     LOGM_DEBUG(TAG, "Ack received for PublishUpdateJobExecutionStatus with code {%d}", ioError);
 }
@@ -348,9 +348,8 @@ void JobsFeature::updateJobExecutionStatusRejectedHandler(Iotjobs::RejectedError
     UpdateJobExecutionResponseType responseCode = NON_RETRYABLE_ERROR;
     Iotjobs::RejectedErrorCode rejectedErrorCode = rejectedError->Code.value();
 
-    if (rejectedErrorCode != Iotjobs::RejectedErrorCode::RequestThrottled &&
-        rejectedErrorCode != Iotjobs::RejectedErrorCode::ResourceNotFound &&
-        rejectedErrorCode != Iotjobs::RejectedErrorCode::InternalError)
+    if (rejectedErrorCode == Iotjobs::RejectedErrorCode::RequestThrottled ||
+        rejectedErrorCode == Iotjobs::RejectedErrorCode::InternalError)
     {
         responseCode = RETRYABLE_ERROR;
     }
@@ -366,9 +365,9 @@ void JobsFeature::updateJobExecutionStatusRejectedHandler(Iotjobs::RejectedError
 }
 
 void JobsFeature::publishUpdateJobExecutionStatus(
-    JobExecutionData data,
-    JobExecutionStatusInfo statusInfo,
-    function<void(void)> onCompleteCallback)
+    const JobExecutionData &data,
+    const JobExecutionStatusInfo &statusInfo,
+    const function<void(void)> &onCompleteCallback)
 {
     LOG_DEBUG(TAG, "Attempting to update job execution status!");
 
@@ -382,39 +381,36 @@ void JobsFeature::publishUpdateJobExecutionStatus(
     if (!statusInfo.stdoutput.empty())
     {
         // We want the most recent output since we can only include 1024 characters in the job execution update
-        int startPos = statusInfo.stdoutput.size() > MAX_STATUS_DETAIL_LENGTH
-                           ? statusInfo.stdoutput.size() - MAX_STATUS_DETAIL_LENGTH
-                           : 0;
+        size_t startPos = statusInfo.stdoutput.size() > MAX_STATUS_DETAIL_LENGTH
+                              ? statusInfo.stdoutput.size() - MAX_STATUS_DETAIL_LENGTH
+                              : 0;
         // TODO We need to add filtering of invalid characters for the status details that may come from weird
         // process output. The valid values for a statusDetail value are '[^\p{C}]+ which translates into
         // "everything other than invisible control characters and unused code points" (See
         // http://www.unicode.org/reports/tr18/#General_Category_Property)
 
         // NOTE(marcoaz): Aws::Crt::String does not convert from std::string
-        // cppcheck-suppress danglingTemporaryLifetime
         statusDetails["stdout"] = statusInfo.stdoutput.substr(startPos, statusInfo.stdoutput.size()).c_str();
     }
 
     if (!statusInfo.stderror.empty())
     {
-        int startPos = statusInfo.stderror.size() > MAX_STATUS_DETAIL_LENGTH
-                           ? statusInfo.stderror.size() - MAX_STATUS_DETAIL_LENGTH
-                           : 0;
+        size_t startPos = statusInfo.stderror.size() > MAX_STATUS_DETAIL_LENGTH
+                              ? statusInfo.stderror.size() - MAX_STATUS_DETAIL_LENGTH
+                              : 0;
         // NOTE(marcoaz): Aws::Crt::String does not convert from std::string
-        // cppcheck-suppress danglingTemporaryLifetime
         statusDetails["stderr"] = statusInfo.stderror.substr(startPos, statusInfo.stderror.size()).c_str();
     }
 
     // NOTE(marcoaz): statusDetails is captured by value
-    // cppcheck-suppress danglingTemporaryLifetime
     publishUpdateJobExecutionStatusWithRetry(data, statusInfo, statusDetails, onCompleteCallback);
 }
 
 void JobsFeature::publishUpdateJobExecutionStatusWithRetry(
-    Aws::Iotjobs::JobExecutionData data,
-    JobsFeature::JobExecutionStatusInfo statusInfo,
-    Aws::Crt::Map<Aws::Crt::String, Aws::Crt::String> statusDetails,
-    std::function<void(void)> onCompleteCallback)
+    const Aws::Iotjobs::JobExecutionData &data,
+    const JobsFeature::JobExecutionStatusInfo &statusInfo,
+    const Aws::Crt::Map<Aws::Crt::String, Aws::Crt::String> &statusDetails,
+    const std::function<void(void)> &onCompleteCallback)
 {
     /** When we update the job execution status, we need to perform an exponential
      * backoff in case our request gets throttled. Otherwise, if we never properly
@@ -572,7 +568,7 @@ void JobsFeature::initJob(const JobExecutionData &job)
         if (needStop.load())
         {
             LOGM_INFO(TAG, "Shutting down %s now that job execution is complete", getName().c_str());
-            baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STOPPED);
+            baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STOPPED);
         }
     };
 
@@ -603,7 +599,7 @@ void JobsFeature::executeJob(const Iotjobs::JobExecutionData &job, const PlainJo
         if (needStop.load())
         {
             LOGM_INFO(TAG, "Shutting down %s now that job execution is complete", getName().c_str());
-            baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STOPPED);
+            baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STOPPED);
         }
     };
     // TODO: Add support for checking condition
@@ -665,7 +661,7 @@ void JobsFeature::runJobs()
 }
 
 int JobsFeature::init(
-    shared_ptr<Mqtt::MqttConnection> connection,
+    shared_ptr<Crt::Mqtt::MqttConnection> connection,
     shared_ptr<ClientBaseNotifier> notifier,
     const PlainConfig &config)
 {
@@ -694,7 +690,7 @@ int JobsFeature::start()
     thread jobs_thread(&JobsFeature::runJobs, this);
     jobs_thread.detach();
 
-    baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STARTED);
+    baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STARTED);
     return 0;
 }
 
@@ -703,7 +699,7 @@ int JobsFeature::stop()
     needStop.store(true);
     if (!handlingJob.load())
     {
-        baseNotifier->onEvent((Feature *)this, ClientBaseEventNotification::FEATURE_STOPPED);
+        baseNotifier->onEvent(static_cast<Feature *>(this), ClientBaseEventNotification::FEATURE_STOPPED);
     }
 
     return 0;
@@ -711,10 +707,10 @@ int JobsFeature::stop()
 
 std::shared_ptr<AbstractIotJobsClient> JobsFeature::createJobsClient()
 {
-    return std::shared_ptr<AbstractIotJobsClient>(new IotJobsClientWrapper(mqttConnection));
+    return std::make_shared<IotJobsClientWrapper>(mqttConnection);
 }
 
 std::shared_ptr<JobEngine> JobsFeature::createJobEngine()
 {
-    return std::shared_ptr<JobEngine>(new JobEngine());
+    return std::make_shared<JobEngine>();
 }

@@ -9,6 +9,7 @@
 #include "../SharedCrtResourceManager.h"
 #include "IotSecureTunnelingClientWrapper.h"
 #include "SecureTunnelingContext.h"
+#include "aws/crt/http/HttpProxyStrategy.h"
 #include <aws/iotdevicecommon/IotDevice.h>
 #include <aws/iotsecuretunneling/SecureTunnelingNotifyResponse.h>
 
@@ -105,7 +106,7 @@ namespace Aws
                      *
                      * @param ioErr error code
                      */
-                    void OnSubscribeComplete(int ioErr);
+                    void OnSubscribeComplete(int ioErr) const;
 
                     /**
                      * \brief Get the secure tunneling data plain endpoint given an AWS region
@@ -176,6 +177,11 @@ namespace Aws
                      * attention
                      */
                     std::shared_ptr<ClientBaseNotifier> mClientBaseNotifier;
+
+                    /**
+                     * \brief HTTP proxy strategy and auth config
+                     */
+                    Aws::Crt::Http::HttpClientConnectionProxyOptions proxyOptions;
 
                     /**
                      * \brief The ThingName to use

@@ -17,6 +17,7 @@
 
 #endif
 
+#include "../SharedCrtResourceManager.h"
 #include "../util/FileUtils.h"
 #include "../util/MqttUtils.h"
 #include "../util/ProxyUtils.h"
@@ -276,31 +277,19 @@ bool PlainConfig::LoadFromCliArgs(const CliArgs &cliArgs)
         thingName = cliArgs.at(PlainConfig::CLI_THING_NAME).c_str();
     }
 
-    return logConfig.LoadFromCliArgs(cliArgs) && jobs.LoadFromCliArgs(cliArgs) && tunneling.LoadFromCliArgs(cliArgs) &&
-           deviceDefender.LoadFromCliArgs(cliArgs) && fleetProvisioning.LoadFromCliArgs(cliArgs) &&
-           pubSub.LoadFromCliArgs(cliArgs) && sampleShadow.LoadFromCliArgs(cliArgs) &&
-           configShadow.LoadFromCliArgs(cliArgs) && secureElement.LoadFromCliArgs(cliArgs) &&
-           httpProxyConfig.LoadFromCliArgs(cliArgs);
+    bool loadFeatureCliArgs = tunneling.LoadFromCliArgs(cliArgs) && logConfig.LoadFromCliArgs(cliArgs);
+#if !defined(DISABLE_MQTT)
+    loadFeatureCliArgs = loadFeatureCliArgs && jobs.LoadFromCliArgs(cliArgs) &&
+                         deviceDefender.LoadFromCliArgs(cliArgs) && fleetProvisioning.LoadFromCliArgs(cliArgs) &&
+                         pubSub.LoadFromCliArgs(cliArgs) && sampleShadow.LoadFromCliArgs(cliArgs) &&
+                         configShadow.LoadFromCliArgs(cliArgs) && secureElement.LoadFromCliArgs(cliArgs) &&
+                         httpProxyConfig.LoadFromCliArgs(cliArgs);
+#endif
+    return loadFeatureCliArgs;
 }
 
 bool PlainConfig::LoadFromEnvironment()
 {
-    const char *memTraceLevelStr = std::getenv("AWS_CRT_MEMORY_TRACING");
-    if (memTraceLevelStr)
-    {
-        switch (atoi(memTraceLevelStr))
-        {
-            case AWS_MEMTRACE_BYTES:
-                LOG_DEBUG(Config::TAG, "Set AWS_CRT_MEMORY_TRACING=AWS_MEMTRACE_BYTES");
-                memTraceLevel = AWS_MEMTRACE_BYTES;
-                break;
-            case AWS_MEMTRACE_STACKS:
-                LOG_DEBUG(Config::TAG, "Set AWS_CRT_MEMORY_TRACING=AWS_MEMTRACE_STACKS");
-                memTraceLevel = AWS_MEMTRACE_STACKS;
-                break;
-        }
-    }
-
     const char *lockFilePathIn = std::getenv("LOCK_FILE_PATH");
     if (lockFilePathIn)
     {
@@ -314,25 +303,20 @@ bool PlainConfig::LoadFromEnvironment()
         lockFilePath = lockFilePathStr;
     }
 
-    return logConfig.LoadFromEnvironment() && jobs.LoadFromEnvironment() && tunneling.LoadFromEnvironment() &&
-           deviceDefender.LoadFromEnvironment() && fleetProvisioning.LoadFromEnvironment() &&
-           fleetProvisioningRuntimeConfig.LoadFromEnvironment() && pubSub.LoadFromEnvironment() &&
-           sampleShadow.LoadFromEnvironment() && configShadow.LoadFromEnvironment();
+    bool loadFeatureEnvironmentVar = tunneling.LoadFromEnvironment() && logConfig.LoadFromEnvironment();
+#if !defined(DISABLE_MQTT)
+    loadFeatureEnvironmentVar = loadFeatureEnvironmentVar && jobs.LoadFromEnvironment() &&
+                                deviceDefender.LoadFromEnvironment() && fleetProvisioning.LoadFromEnvironment() &&
+                                fleetProvisioningRuntimeConfig.LoadFromEnvironment() && pubSub.LoadFromEnvironment() &&
+                                sampleShadow.LoadFromEnvironment() && configShadow.LoadFromEnvironment();
+#endif
+    return loadFeatureEnvironmentVar;
 }
 
 bool PlainConfig::Validate() const
 {
     if (!logConfig.Validate())
     {
-        return false;
-    }
-    if (lockFilePath.empty() || !FileUtils::IsValidFilePath(lockFilePath))
-    {
-        LOGM_ERROR(
-            Config::TAG,
-            "*** %s: Invalid Lock File Path %s ***",
-            DeviceClient::DC_FATAL_ERROR,
-            Sanitize(lockFilePath).c_str());
         return false;
     }
     if (rootCa.has_value() && !rootCa->empty() && FileUtils::FileExists(rootCa->c_str()))
@@ -380,13 +364,13 @@ bool PlainConfig::Validate() const
         return false;
     }
 #endif
-#if !defined(EXCLUDE_JOBS)
+#if !defined(EXCLUDE_JOBS) || !defined(DISABLE_MQTT)
     if (!jobs.Validate())
     {
         return false;
     }
 #endif
-#if !defined(EXCLUDE_DD)
+#if !defined(EXCLUDE_DD) || !defined(DISABLE_MQTT)
     if (!deviceDefender.Validate())
     {
         return false;
@@ -398,32 +382,29 @@ bool PlainConfig::Validate() const
         return false;
     }
 #endif
-#if !defined(EXCLUDE_FP)
+#if !defined(EXCLUDE_FP) || !defined(DISABLE_MQTT)
     if (!fleetProvisioning.Validate())
     {
         return false;
     }
 #endif
-#if !defined(EXCLUDE_PUBSUB)
+#if !defined(EXCLUDE_PUBSUB) || !defined(DISABLE_MQTT)
     if (!pubSub.Validate())
     {
         return false;
     }
 #endif
-#if !defined(EXCLUDE_SHADOW)
+#if !defined(EXCLUDE_SHADOW) || !defined(DISABLE_MQTT)
     if (!sampleShadow.Validate() || !configShadow.Validate())
     {
         return false;
     }
 #endif
-    if (secureElement.enabled)
+    if (secureElement.enabled && !secureElement.Validate())
     {
-        if (!secureElement.Validate())
-        {
-            return false;
-        }
+        return false;
     }
-#if !defined(EXCLUDE_SENSOR_PUBLISH)
+#if !defined(EXCLUDE_SENSOR_PUBLISH) || !defined(DISABLE_MQTT)
     if (!sensorPublish.Validate())
     {
         return false;
@@ -528,7 +509,7 @@ constexpr char PlainConfig::LogConfig::JSON_KEY_ENABLE_SDK_LOGGING[];
 constexpr char PlainConfig::LogConfig::JSON_KEY_SDK_LOG_LEVEL[];
 constexpr char PlainConfig::LogConfig::JSON_KEY_SDK_LOG_FILE[];
 
-int PlainConfig::LogConfig::ParseDeviceClientLogLevel(string level)
+int PlainConfig::LogConfig::ParseDeviceClientLogLevel(const string &level) const
 {
     string temp = level;
     std::transform(temp.begin(), temp.end(), temp.begin(), [](unsigned char c) { return std::toupper(c); });
@@ -556,7 +537,7 @@ int PlainConfig::LogConfig::ParseDeviceClientLogLevel(string level)
     }
 }
 
-Aws::Crt::LogLevel PlainConfig::LogConfig::ParseSDKLogLevel(string level)
+Aws::Crt::LogLevel PlainConfig::LogConfig::ParseSDKLogLevel(const string &level) const
 {
     string temp = level;
     std::transform(temp.begin(), temp.end(), temp.begin(), [](unsigned char c) { return std::toupper(c); });
@@ -592,7 +573,7 @@ Aws::Crt::LogLevel PlainConfig::LogConfig::ParseSDKLogLevel(string level)
     }
 }
 
-string PlainConfig::LogConfig::ParseDeviceClientLogType(string value)
+string PlainConfig::LogConfig::ParseDeviceClientLogType(const string &value) const
 {
     string temp = value;
     // Convert to lowercase for comparisons
@@ -622,13 +603,10 @@ string PlainConfig::LogConfig::StringifyDeviceClientLogLevel(int level) const
     {
         case DeviceClient::Logging::LogLevel::ERROR:
             return "ERROR";
-            break;
         case DeviceClient::Logging::LogLevel::WARN:
             return "WARN";
-            break;
         case DeviceClient::Logging::LogLevel::INFO:
             return "INFO";
-            break;
         case DeviceClient::Logging::LogLevel::DEBUG:
             return "DEBUG";
     }
@@ -687,7 +665,7 @@ bool PlainConfig::LogConfig::LoadFromJson(const Crt::JsonView &json)
     }
 
     jsonKey = JSON_KEY_LOG_FILE;
-    if (json.ValueExists(jsonKey))
+    if ((deviceClientLogtype == LOG_TYPE_FILE) && json.ValueExists(jsonKey))
     {
         if (!json.GetString(jsonKey).empty())
         {
@@ -1062,50 +1040,53 @@ bool PlainConfig::FleetProvisioning::LoadFromJson(const Crt::JsonView &json)
         enabled = json.GetBool(jsonKey);
     }
 
-    jsonKey = JSON_KEY_TEMPLATE_NAME;
-    if (json.ValueExists(jsonKey))
+    if (enabled)
     {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_KEY_TEMPLATE_NAME;
+        if (json.ValueExists(jsonKey))
         {
-            templateName = json.GetString(jsonKey).c_str();
+            if (!json.GetString(jsonKey).empty())
+            {
+                templateName = json.GetString(jsonKey).c_str();
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
 
-    jsonKey = JSON_KEY_TEMPLATE_PARAMETERS;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_KEY_TEMPLATE_PARAMETERS;
+        if (json.ValueExists(jsonKey) && !json.GetString(jsonKey).empty())
         {
             templateParameters = json.GetString(jsonKey).c_str();
         }
-    }
 
-    jsonKey = JSON_KEY_CSR_FILE;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_KEY_CSR_FILE;
+        if (json.ValueExists(jsonKey))
         {
-            csrFile = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            if (!json.GetString(jsonKey).empty())
+            {
+                csrFile = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
+        jsonKey = JSON_KEY_DEVICE_KEY;
+        if (json.ValueExists(jsonKey))
         {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
-    jsonKey = JSON_KEY_DEVICE_KEY;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
-        {
-            deviceKey = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
-        }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            if (!json.GetString(jsonKey).empty())
+            {
+                deviceKey = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
     }
 
@@ -1158,20 +1139,14 @@ bool PlainConfig::FleetProvisioning::Validate() const
         return false;
     }
 
-    if (csrFile.has_value() && !csrFile->empty())
+    if (csrFile.has_value() && !csrFile->empty() && !FileUtils::IsValidFilePath(csrFile->c_str()))
     {
-        if (!FileUtils::IsValidFilePath(csrFile->c_str()))
-        {
-            return false;
-        }
+        return false;
     }
 
-    if (deviceKey.has_value() && !deviceKey->empty())
+    if (deviceKey.has_value() && !deviceKey->empty() && !FileUtils::IsValidFilePath(deviceKey->c_str()))
     {
-        if (!FileUtils::IsValidFilePath(deviceKey->c_str()))
-        {
-            return false;
-        }
+        return false;
     }
 
     return true;
@@ -1216,36 +1191,41 @@ bool PlainConfig::FleetProvisioningRuntimeConfig::LoadFromJson(const Crt::JsonVi
         completedFleetProvisioning = json.GetBool(jsonKey);
     }
 
-    jsonKey = JSON_KEY_CERT;
-    if (json.ValueExists(jsonKey))
+    if (completedFleetProvisioning)
     {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_KEY_CERT;
+        if (json.ValueExists(jsonKey))
         {
-            cert = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            if (!json.GetString(jsonKey).empty())
+            {
+                cert = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
 
-    jsonKey = JSON_KEY_KEY;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_KEY_KEY;
+        if (json.ValueExists(jsonKey))
         {
-            key = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            if (!json.GetString(jsonKey).empty())
+            {
+                key = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
 
-    jsonKey = JSON_KEY_THING_NAME;
-    if (json.ValueExists(jsonKey))
-    {
-        thingName = json.GetString(jsonKey).c_str();
+        jsonKey = JSON_KEY_THING_NAME;
+        if (json.ValueExists(jsonKey))
+        {
+            thingName = json.GetString(jsonKey).c_str();
+        }
     }
 
     return true;
@@ -1501,6 +1481,7 @@ constexpr char PlainConfig::PubSub::JSON_PUB_SUB_PUBLISH_TOPIC[];
 constexpr char PlainConfig::PubSub::JSON_PUB_SUB_PUBLISH_FILE[];
 constexpr char PlainConfig::PubSub::JSON_PUB_SUB_SUBSCRIBE_TOPIC[];
 constexpr char PlainConfig::PubSub::JSON_PUB_SUB_SUBSCRIBE_FILE[];
+constexpr char PlainConfig::PubSub::JSON_PUB_SUB_PUBLISH_ON_CHANGE[];
 
 bool PlainConfig::PubSub::LoadFromJson(const Crt::JsonView &json)
 {
@@ -1510,56 +1491,69 @@ bool PlainConfig::PubSub::LoadFromJson(const Crt::JsonView &json)
         enabled = json.GetBool(jsonKey);
     }
 
-    jsonKey = JSON_PUB_SUB_PUBLISH_TOPIC;
-    if (json.ValueExists(jsonKey))
+    if (enabled)
     {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_PUB_SUB_PUBLISH_TOPIC;
+        if (json.ValueExists(jsonKey))
         {
-            publishTopic = json.GetString(jsonKey).c_str();
+            if (!json.GetString(jsonKey).empty())
+            {
+                publishTopic = json.GetString(jsonKey).c_str();
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
+
+        jsonKey = JSON_PUB_SUB_PUBLISH_FILE;
+        if (json.ValueExists(jsonKey))
         {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            if (!json.GetString(jsonKey).empty())
+            {
+                publishFile = json.GetString(jsonKey).c_str();
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
+        }
+
+        jsonKey = JSON_PUB_SUB_SUBSCRIBE_TOPIC;
+        if (json.ValueExists(jsonKey))
+        {
+            if (!json.GetString(jsonKey).empty())
+            {
+                subscribeTopic = json.GetString(jsonKey).c_str();
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
+        }
+
+        jsonKey = JSON_PUB_SUB_SUBSCRIBE_FILE;
+        if (json.ValueExists(jsonKey))
+        {
+            if (!json.GetString(jsonKey).empty())
+            {
+                subscribeFile = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
     }
 
-    jsonKey = JSON_PUB_SUB_PUBLISH_FILE;
+    jsonKey = JSON_PUB_SUB_PUBLISH_ON_CHANGE;
     if (json.ValueExists(jsonKey))
     {
-        if (!json.GetString(jsonKey).empty())
-        {
-            publishFile = json.GetString(jsonKey).c_str();
-        }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
-
-    jsonKey = JSON_PUB_SUB_SUBSCRIBE_TOPIC;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
-        {
-            subscribeTopic = json.GetString(jsonKey).c_str();
-        }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
-
-    jsonKey = JSON_PUB_SUB_SUBSCRIBE_FILE;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
-        {
-            subscribeFile = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
-        }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
+        publishOnChange = json.GetBool(jsonKey);
     }
 
     return true;
@@ -1705,37 +1699,39 @@ bool PlainConfig::SampleShadow::LoadFromJson(const Crt::JsonView &json)
         enabled = json.GetBool(jsonKey);
     }
 
-    jsonKey = JSON_SAMPLE_SHADOW_NAME;
-    if (!json.GetString(jsonKey).empty())
+    if (enabled)
     {
-        shadowName = json.GetString(jsonKey).c_str();
-    }
-    else
-    {
-        LOGM_WARN(
-            Config::TAG, "Shadow Name {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-    }
-
-    jsonKey = JSON_SAMPLE_SHADOW_INPUT_FILE;
-    if (json.ValueExists(jsonKey))
-    {
+        jsonKey = JSON_SAMPLE_SHADOW_NAME;
         if (!json.GetString(jsonKey).empty())
         {
-            shadowInputFile = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            shadowName = json.GetString(jsonKey).c_str();
         }
         else
         {
             LOGM_WARN(
                 Config::TAG,
-                "Input file {%s} was provided in the JSON configuration file with an empty value",
+                "Shadow Name {%s} was provided in the JSON configuration file with an empty value",
                 jsonKey);
         }
-    }
 
-    jsonKey = JSON_SAMPLE_SHADOW_OUTPUT_FILE;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_SAMPLE_SHADOW_INPUT_FILE;
+        if (json.ValueExists(jsonKey))
+        {
+            if (!json.GetString(jsonKey).empty())
+            {
+                shadowInputFile = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG,
+                    "Input file {%s} was provided in the JSON configuration file with an empty value",
+                    jsonKey);
+            }
+        }
+
+        jsonKey = JSON_SAMPLE_SHADOW_OUTPUT_FILE;
+        if (json.ValueExists(jsonKey) && !json.GetString(jsonKey).empty())
         {
             shadowOutputFile = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
         }
@@ -1767,12 +1763,9 @@ bool PlainConfig::SampleShadow::LoadFromCliArgs(const CliArgs &cliArgs)
     }
 
     // setting `shadowOutputFile` value to default if no value was passed by user via CLI or JSON config.
-    if (!shadowOutputFile.has_value() || shadowOutputFile->empty())
+    if ((!shadowOutputFile.has_value() || shadowOutputFile->empty()) && !createShadowOutputFile())
     {
-        if (!createShadowOutputFile())
-        {
-            return false;
-        }
+        return false;
     }
 
     return true;
@@ -1928,68 +1921,76 @@ bool PlainConfig::SecureElement::LoadFromJson(const Crt::JsonView &json)
         enabled = json.GetBool(jsonKey);
     }
 
-    jsonKey = JSON_PKCS11_LIB;
-    if (json.ValueExists(jsonKey))
+    if (enabled)
     {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_PKCS11_LIB;
+        if (json.ValueExists(jsonKey))
         {
-            pkcs11Lib = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            if (!json.GetString(jsonKey).empty())
+            {
+                pkcs11Lib = FileUtils::ExtractExpandedPath(json.GetString(jsonKey).c_str());
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
 
-    jsonKey = JSON_SECURE_ELEMENT_PIN;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_SECURE_ELEMENT_PIN;
+        if (json.ValueExists(jsonKey))
         {
-            secureElementPin = json.GetString(jsonKey).c_str();
+            if (!json.GetString(jsonKey).empty())
+            {
+                secureElementPin = json.GetString(jsonKey).c_str();
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
 
-    jsonKey = JSON_SECURE_ELEMENT_KEY_LABEL;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_SECURE_ELEMENT_KEY_LABEL;
+        if (json.ValueExists(jsonKey))
         {
-            secureElementKeyLabel = json.GetString(jsonKey).c_str();
+            if (!json.GetString(jsonKey).empty())
+            {
+                secureElementKeyLabel = json.GetString(jsonKey).c_str();
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
 
-    jsonKey = JSON_SECURE_ELEMENT_SLOT_ID;
-    if (json.ValueExists(jsonKey))
-    {
-        if (json.GetInt64(jsonKey))
+        jsonKey = JSON_SECURE_ELEMENT_SLOT_ID;
+        if (json.ValueExists(jsonKey))
         {
-            secureElementSlotId = json.GetInt64(jsonKey);
+            if (json.GetInt64(jsonKey))
+            {
+                secureElementSlotId = json.GetInt64(jsonKey);
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
-        }
-    }
 
-    jsonKey = JSON_SECURE_ELEMENT_TOKEN_LABEL;
-    if (json.ValueExists(jsonKey))
-    {
-        if (!json.GetString(jsonKey).empty())
+        jsonKey = JSON_SECURE_ELEMENT_TOKEN_LABEL;
+        if (json.ValueExists(jsonKey))
         {
-            secureElementTokenLabel = json.GetString(jsonKey).c_str();
-        }
-        else
-        {
-            LOGM_WARN(Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            if (!json.GetString(jsonKey).empty())
+            {
+                secureElementTokenLabel = json.GetString(jsonKey).c_str();
+            }
+            else
+            {
+                LOGM_WARN(
+                    Config::TAG, "Key {%s} was provided in the JSON configuration file with an empty value", jsonKey);
+            }
         }
     }
 
@@ -2295,19 +2296,15 @@ bool PlainConfig::SensorPublish::Validate() const
         {
             setting.enabled = false;
         }
-        if (setting.mqttDeadLetterTopic.has_value() && !setting.mqttDeadLetterTopic.value().empty())
+        if (setting.mqttDeadLetterTopic.has_value() && !setting.mqttDeadLetterTopic.value().empty() &&
+            !MqttUtils::ValidateAwsIotMqttTopicName(setting.mqttDeadLetterTopic.value()))
         {
-            if (!MqttUtils::ValidateAwsIotMqttTopicName(setting.mqttDeadLetterTopic.value()))
-            {
-                setting.enabled = false;
-            }
+            setting.enabled = false;
         }
-        if (setting.mqttHeartbeatTopic.has_value() && !setting.mqttHeartbeatTopic.value().empty())
+        if (setting.mqttHeartbeatTopic.has_value() && !setting.mqttHeartbeatTopic.value().empty() &&
+            !MqttUtils::ValidateAwsIotMqttTopicName(setting.mqttHeartbeatTopic.value()))
         {
-            if (!MqttUtils::ValidateAwsIotMqttTopicName(setting.mqttHeartbeatTopic.value()))
-            {
-                setting.enabled = false;
-            }
+            setting.enabled = false;
         }
 
         // Validate that delimiter is non-empty and valid.
@@ -2571,7 +2568,7 @@ bool Config::ParseCliArgs(int argc, char **argv, CliArgs &cliArgs)
         {PlainConfig::HttpProxyConfig::CLI_HTTP_PROXY_CONFIG_PATH, true, nullptr}};
 
     map<string, ArgumentDefinition> argumentDefinitionMap;
-    for (auto &i : argumentDefinitions)
+    for (const auto &i : argumentDefinitions)
     {
         argumentDefinitionMap[i.cliFlag] = i;
     }
@@ -2627,6 +2624,14 @@ bool Config::ParseCliArgs(int argc, char **argv, CliArgs &cliArgs)
 
 bool Config::init(const CliArgs &cliArgs)
 {
+#if defined(EXCLUDE_JOBS)
+    config.jobs.enabled = false;
+#endif
+
+#if defined(EXCLUDE_ST)
+    config.tunneling.enabled = false;
+#endif
+
     try
     {
         string filename = Config::DEFAULT_CONFIG_FILE;
@@ -2668,6 +2673,8 @@ bool Config::init(const CliArgs &cliArgs)
             return false;
         }
 
+#if !defined(DISABLE_MQTT)
+        // ST_COMPONENT_MODE does not require any settings besides those for Secure Tunneling
         if (ParseConfigFile(
                 Config::DEFAULT_FLEET_PROVISIONING_RUNTIME_CONFIG_FILE, FLEET_PROVISIONING_RUNTIME_CONFIG) &&
             ValidateAndStoreRuntimeConfig())
@@ -2677,7 +2684,10 @@ bool Config::init(const CliArgs &cliArgs)
                 "Successfully fetched Runtime config file '%s' and validated its content.",
                 Config::DEFAULT_FLEET_PROVISIONING_RUNTIME_CONFIG_FILE);
         }
+#endif
 
+#if !defined(DISABLE_MQTT)
+        // ST_COMPONENT_MODE does not require any settings besides those for Secure Tunneling
         if (ParseConfigFile(config.httpProxyConfig.proxyConfigPath->c_str(), HTTP_PROXY_CONFIG) &&
             config.httpProxyConfig.httpProxyEnabled)
         {
@@ -2696,6 +2706,7 @@ bool Config::init(const CliArgs &cliArgs)
                 config.httpProxyConfig.proxyConfigPath->c_str());
             return true;
         }
+#endif
 
         return config.Validate();
     }
@@ -2724,7 +2735,7 @@ bool Config::ValidateAndStoreRuntimeConfig()
     return true;
 }
 
-bool Config::ValidateAndStoreHttpProxyConfig()
+bool Config::ValidateAndStoreHttpProxyConfig() const
 {
     // check if all values are present and also check if the files are present then only overwrite values
     if (!config.httpProxyConfig.Validate())
@@ -2824,14 +2835,14 @@ bool Config::ParseConfigFile(const string &file, ConfigFileType configFileType)
     }
 
     std::string contents((std::istreambuf_iterator<char>(setting)), std::istreambuf_iterator<char>());
-    Crt::JsonObject jsonObj = Aws::Crt::JsonObject(contents.c_str());
+    auto jsonObj = Aws::Crt::JsonObject(contents.c_str());
     if (!jsonObj.WasParseSuccessful())
     {
         LOGM_ERROR(
             TAG, "Couldn't parse JSON config file. GetErrorMessage returns: %s", jsonObj.GetErrorMessage().c_str());
         return false;
     }
-    Aws::Crt::JsonView jsonView = Aws::Crt::JsonView(jsonObj);
+    auto jsonView = Aws::Crt::JsonView(jsonObj);
     switch (configFileType)
     {
         case DEVICE_CLIENT_ESSENTIAL_CONFIG:
@@ -2858,7 +2869,9 @@ bool Config::ParseConfigFile(const string &file, ConfigFileType configFileType)
         }
     }
 
+#if !defined(DISABLE_MQTT)
     LOGM_INFO(TAG, "Successfully fetched JSON config file: %s", Sanitize(contents).c_str());
+#endif
     setting.close();
 
     return true;

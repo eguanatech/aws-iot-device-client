@@ -7,6 +7,7 @@
 #include "TcpForward.h"
 #include <aws/crt/mqtt/MqttClient.h>
 #include <aws/iotsecuretunneling/SubscribeToTunnelsNotifyRequest.h>
+#include <csignal>
 #include <map>
 #include <memory>
 #include <thread>
@@ -93,6 +94,38 @@ namespace Aws
 
                 void SecureTunnelingFeature::LoadFromConfig(const PlainConfig &config)
                 {
+                    PlainConfig::HttpProxyConfig proxyConfig = config.httpProxyConfig;
+
+                    if (proxyConfig.httpProxyEnabled)
+                    {
+                        proxyOptions.HostName = proxyConfig.proxyHost->c_str();
+                        proxyOptions.Port = proxyConfig.proxyPort.value();
+                        proxyOptions.ProxyConnectionType = Aws::Crt::Http::AwsHttpProxyConnectionType::Tunneling;
+
+                        LOGM_INFO(
+                            TAG,
+                            "Attempting to establish tunneling connection with proxy: %s:%u",
+                            proxyOptions.HostName.c_str(),
+                            proxyOptions.Port);
+
+                        if (proxyConfig.httpProxyAuthEnabled)
+                        {
+                            LOG_INFO(TAG, "Proxy Authentication is enabled");
+                            Aws::Crt::Http::HttpProxyStrategyBasicAuthConfig basicAuthConfig;
+                            basicAuthConfig.ConnectionType = Aws::Crt::Http::AwsHttpProxyConnectionType::Tunneling;
+                            proxyOptions.AuthType = Aws::Crt::Http::AwsHttpProxyAuthenticationType::Basic;
+                            basicAuthConfig.Username = proxyConfig.proxyUsername->c_str();
+                            basicAuthConfig.Password = proxyConfig.proxyPassword->c_str();
+                            proxyOptions.ProxyStrategy =
+                                Aws::Crt::Http::HttpProxyStrategy::CreateBasicHttpProxyStrategy(
+                                    basicAuthConfig, Aws::Crt::g_allocator);
+                        }
+                        else
+                        {
+                            LOG_INFO(TAG, "Proxy Authentication is disabled");
+                            proxyOptions.AuthType = Aws::Crt::Http::AwsHttpProxyAuthenticationType::None;
+                        }
+                    }
                     mThingName = *config.thingName;
                     mRootCa = config.rootCa;
                     mSubscribeNotification = config.tunneling.subscribeNotification;
@@ -100,14 +133,10 @@ namespace Aws
 
                     if (!config.tunneling.subscribeNotification)
                     {
-                        std::unique_ptr<SecureTunnelingContext> context =
-                            unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
-                                mSharedCrtResourceManager,
-                                mRootCa,
-                                *config.tunneling.destinationAccessToken,
-                                GetEndpoint(*config.tunneling.region),
-                                static_cast<uint16_t>(config.tunneling.port.value()),
-                                bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
+                        auto context = createContext(
+                            *config.tunneling.destinationAccessToken,
+                            *config.tunneling.region,
+                            static_cast<uint16_t>(config.tunneling.port.value()));
                         mContexts.push_back(std::move(context));
                     }
                 }
@@ -217,7 +246,7 @@ namespace Aws
                     }
                 }
 
-                void SecureTunnelingFeature::OnSubscribeComplete(int ioErr)
+                void SecureTunnelingFeature::OnSubscribeComplete(int ioErr) const
                 {
                     LOG_DEBUG(TAG, "Subscribed to tunnel notification topic");
 
@@ -257,6 +286,7 @@ namespace Aws
                 {
                     return std::unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
                         mSharedCrtResourceManager,
+                        proxyOptions,
                         mRootCa,
                         accessToken,
                         GetEndpoint(region),
@@ -266,18 +296,23 @@ namespace Aws
 
                 std::shared_ptr<AbstractIotSecureTunnelingClient> SecureTunnelingFeature::createClient()
                 {
-                    return std::shared_ptr<AbstractIotSecureTunnelingClient>(
-                        new IotSecureTunnelingClientWrapper(mSharedCrtResourceManager->getConnection()));
+                    return std::make_shared<IotSecureTunnelingClientWrapper>(
+                        mSharedCrtResourceManager->getConnection());
                 }
 
                 void SecureTunnelingFeature::OnConnectionShutdown(SecureTunnelingContext *contextToRemove)
                 {
                     LOG_DEBUG(TAG, "SecureTunnelingFeature::OnConnectionShutdown");
-
-                    auto it = find_if(mContexts.begin(), mContexts.end(), [&](unique_ptr<SecureTunnelingContext> &c) {
-                        return c.get() == contextToRemove;
-                    });
+                    auto it =
+                        find_if(mContexts.begin(), mContexts.end(), [&](const unique_ptr<SecureTunnelingContext> &c) {
+                            return c.get() == contextToRemove;
+                        });
                     mContexts.erase(std::remove(mContexts.begin(), mContexts.end(), *it));
+
+#if defined(DISABLE_MQTT)
+                    LOG_INFO(TAG, "Secure Tunnel closed, component cleaning up open thread");
+                    raise(SIGTERM);
+#endif
                 }
 
             } // namespace SecureTunneling

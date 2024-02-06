@@ -37,18 +37,21 @@ namespace Aws
                     TcpForward(
                         std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager,
                         uint16_t port,
-                        OnTcpForwardDataReceive onTcpForwardDataReceive);
+                        const OnTcpForwardDataReceive &onTcpForwardDataReceive);
 
                     /**
-                     * \brief Default Constructor
+                     * \brief Constructor with no callback
                      */
-
-                    TcpForward() = default;
+                    TcpForward(std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager, uint16_t port);
 
                     /**
                      * \brief Destructor
                      */
                     virtual ~TcpForward();
+
+                    // Non-copyable.
+                    TcpForward(const TcpForward &) = delete;
+                    TcpForward &operator=(const TcpForward &) = delete;
 
                     /**
                      * \brief Connect to the local TCP socket
@@ -98,7 +101,7 @@ namespace Aws
                     /**
                      * \brief Callback when writing to the socket is complete
                      */
-                    void OnWriteCompleted(struct aws_socket *socket, int error_code, size_t bytes_written);
+                    void OnWriteCompleted(struct aws_socket *socket, int error_code, size_t bytes_written) const;
 
                     /**
                      * \brief Callback when the socket has data to read

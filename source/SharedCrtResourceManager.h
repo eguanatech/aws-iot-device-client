@@ -45,22 +45,26 @@ namespace Aws
                 aws_mem_trace_level memTraceLevel{AWS_MEMTRACE_NONE};
                 std::shared_ptr<Util::FeatureRegistry> features;
 
-                bool setupLogging(const PlainConfig &config);
+                bool setupLogging(const PlainConfig &config) const;
 
                 int buildClient(const PlainConfig &config);
 
-                void initializeAllocator(const PlainConfig &config);
+                void loadMemTraceLevelFromEnvironment();
 
               protected:
                 /**
                  * inheritable for testing
                  */
-                bool locateCredentials(const PlainConfig &config);
+                bool locateCredentials(const PlainConfig &config) const;
 
               public:
-                SharedCrtResourceManager() = default;
+                SharedCrtResourceManager() {}
 
                 virtual ~SharedCrtResourceManager();
+
+                // Non-copyable.
+                SharedCrtResourceManager(const SharedCrtResourceManager &) = delete;
+                SharedCrtResourceManager &operator=(const SharedCrtResourceManager &) = delete;
 
                 /**
                  * \brief Full path to the default log file used by the AWS CRT SDK.
@@ -76,11 +80,13 @@ namespace Aws
 
                 bool initialize(const PlainConfig &config, std::shared_ptr<Util::FeatureRegistry> featureRegistry);
 
+                void initializeAllocator();
+
                 void initializeAWSHttpLib();
 
                 int establishConnection(const PlainConfig &config);
 
-                void startDeviceClientFeatures();
+                void startDeviceClientFeatures() const;
 
                 virtual std::shared_ptr<Crt::Mqtt::MqttConnection> getConnection();
 

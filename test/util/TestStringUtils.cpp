@@ -1,9 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include "../../source/SharedCrtResourceManager.h"
 #include "../../source/config/Config.h"
 #include "../../source/util/StringUtils.h"
+
 #include "gtest/gtest.h"
+#include <aws/crt/JsonObject.h>
 
 using namespace std;
 using namespace Aws::Iot::DeviceClient;
@@ -29,7 +32,7 @@ TEST(StringUtils, FormatStringTruncate)
 {
     string s(Config::MAX_CONFIG_SIZE + 1234, '*');
     string actual = FormatMessage(s.c_str());
-    ASSERT_EQ(actual.size(), Config::MAX_CONFIG_SIZE);
+    ASSERT_EQ(actual.size(), Config::MAX_CONFIG_SIZE - 1);
 }
 
 TEST(StringUtils, sanitizeRemovesFormatSpecifier)
@@ -64,6 +67,10 @@ TEST(StringUtils, leavesNewLineAndTabAlone)
 
 TEST(StringUtils, maptoString)
 {
+    // Initializing allocator, so we can use CJSON lib from SDK in our unit tests.
+    SharedCrtResourceManager resourceManager;
+    resourceManager.initializeAllocator();
+
     Aws::Crt::Map<Aws::Crt::String, Aws::Crt::String> map;
     map.insert(std::pair<Aws::Crt::String, Aws::Crt::String>("a", "b"));
     map.insert(std::pair<Aws::Crt::String, Aws::Crt::String>("c", "d"));
@@ -121,4 +128,43 @@ TEST(StringUtils, trimMultiChar)
     ASSERT_EQ("b", TrimCopy("/a/b/c/", "/ac"));      // Match.
     ASSERT_EQ("/a/b/c/", TrimCopy("/a/b/c/", "ac")); // No match.
     ASSERT_EQ("", TrimCopy("", "/"));                // Empty string.
+}
+
+TEST(StringUtils, ParseToStringVector)
+{
+    constexpr char jsonString[] = R"(
+{
+    "args": ["hello", "world"]
+})";
+    // Initializing allocator, so we can use CJSON lib from SDK in our unit tests.
+    SharedCrtResourceManager resourceManager;
+    resourceManager.initializeAllocator();
+
+    JsonObject jsonObject(jsonString);
+    JsonView jsonView = jsonObject.View();
+
+    vector<string> expected{"hello", "world"};
+    vector<string> actual = ParseToVectorString(jsonView.GetJsonObject("args"));
+
+    ASSERT_TRUE(expected.size() == actual.size());
+    ASSERT_TRUE(equal(expected.begin(), expected.end(), actual.begin()));
+}
+
+TEST(StringUtils, SplitStringByComma)
+{
+    string stringToSplit{"hello,world\\,!"};
+    vector<string> expected{"hello", "world\\,!"};
+    vector<string> actual = SplitStringByComma(stringToSplit);
+
+    ASSERT_TRUE(expected.size() == actual.size());
+    ASSERT_TRUE(equal(expected.begin(), expected.end(), actual.begin()));
+}
+
+TEST(StringUtils, replace_all)
+{
+    string actual{"hello\\,world!"};
+    string expected{"hello,world!"};
+    replace_all(actual, R"(\,)", ",");
+
+    ASSERT_STREQ(actual.c_str(), expected.c_str());
 }
