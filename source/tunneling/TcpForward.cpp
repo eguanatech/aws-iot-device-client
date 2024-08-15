@@ -20,9 +20,10 @@ namespace Aws
 
                 TcpForward::TcpForward(
                     std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager,
+                    string &address,
                     uint16_t port,
                     const OnTcpForwardDataReceive &onTcpForwardDataReceive)
-                    : mSharedCrtResourceManager(sharedCrtResourceManager), mPort(port),
+                    : mSharedCrtResourceManager(sharedCrtResourceManager), mAddress(address), mPort(port),
                       mOnTcpForwardDataReceive(onTcpForwardDataReceive)
                 {
                     AWS_ZERO_STRUCT(mSocket);
@@ -34,8 +35,9 @@ namespace Aws
 
                 TcpForward::TcpForward(
                     std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager,
+                    string &address,
                     uint16_t port)
-                    : mSharedCrtResourceManager(sharedCrtResourceManager), mPort(port)
+                    : mSharedCrtResourceManager(sharedCrtResourceManager), mAddress(address), mPort(port)
                 {
                 }
 
@@ -51,9 +53,9 @@ namespace Aws
 
                 int TcpForward::Connect()
                 {
+                    LOGM_DEBUG(TAG, "Connecting TcpForward to %s:%u", mAddress.c_str(), mPort);
                     aws_socket_endpoint endpoint{};
-                    string localhost = "127.0.0.1";
-                    snprintf(endpoint.address, AWS_ADDRESS_MAX_LEN, "%s", localhost.c_str());
+                    snprintf(endpoint.address, AWS_ADDRESS_MAX_LEN, "%s", mAddress.c_str());
                     endpoint.port = mPort;
 
                     aws_event_loop *eventLoop = aws_event_loop_group_get_next_loop(

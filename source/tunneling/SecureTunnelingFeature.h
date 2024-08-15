@@ -58,12 +58,38 @@ namespace Aws
                     int stop() override;
 
                     /**
+                     * \brief Returns the IP address of the given service
+                     *
+                     * @param service the name of the service
+                     * @return the IP address
+                     */
+                    static std::string GetAddressFromService(const std::string &service);
+
+                    /**
                      * \brief Returns the port number of the given service
                      *
                      * @param service the name of the service
                      * @return the port number
                      */
                     static uint16_t GetPortFromService(const std::string &service);
+
+                    /**
+                     * \brief Returns the service name with the postfix appended
+                     */
+                    static std::string AppendPostfixToService(const std::string &service);
+
+                    /**
+                     * \brief Start a netcat listener on the RS485 port
+                     */
+                    static void StartNetcatListener();
+
+                    /**
+                     * @brief Checks if the given IP address is valid.
+                     *
+                     * @param address The IP address to be checked.
+                     * @return True if the IP address is valid. False otherwise.
+                     */
+                    static bool IsValidAddress(const std::string &address);
 
                     /**
                      * \brief Check if the given port is within the valid range
@@ -127,6 +153,7 @@ namespace Aws
                     virtual std::unique_ptr<SecureTunnelingContext> createContext(
                         const std::string &accessToken,
                         const std::string &region,
+                        const std::string &address,
                         const uint16_t &port);
 
                     /**
@@ -151,6 +178,16 @@ namespace Aws
                      * \brief Format string for forming the secure tunneling data plain endpoint
                      */
                     static constexpr char DEFAULT_PROXY_ENDPOINT_HOST_FORMAT[] = "data.tunneling.iot.%s.amazonaws.com";
+
+                    /**
+                     * @brief Path to the file that represents the operational state of the TCP connection.
+                     */
+                    static constexpr char TCP_OPERSTATE_FILE[] = "/sys/class/net/eth3/operstate";
+
+                    /**
+                     * \brief A map for converting supported services to their IP addresses
+                     */
+                    static std::map<std::string, std::string> mServiceToAddressMap;
 
                     /**
                      * \brief A map for converting supported services to their port numbers

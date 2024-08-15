@@ -192,6 +192,7 @@ namespace Aws
                     bool subscribeNotification{true};
                     Aws::Crt::Optional<std::string> destinationAccessToken;
                     Aws::Crt::Optional<std::string> region;
+                    Aws::Crt::Optional<std::string> address;
                     Aws::Crt::Optional<int> port;
 
                     // Normally the endpoint is determined by `region` only. This is only used to override the normal

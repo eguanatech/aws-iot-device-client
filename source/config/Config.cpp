@@ -908,8 +908,10 @@ bool PlainConfig::Tunneling::LoadFromCliArgs(const CliArgs &cliArgs)
     {
 #if !defined(EXCLUDE_ST)
         auto service = cliArgs.at(PlainConfig::Tunneling::CLI_TUNNELING_SERVICE);
+        address = SecureTunnelingFeature::GetAddressFromService(service);
         port = SecureTunnelingFeature::GetPortFromService(service);
 #else
+        address = "";
         port = 0;
 #endif
     }
@@ -949,16 +951,19 @@ bool PlainConfig::Tunneling::Validate() const
         LOGM_ERROR(Config::TAG, "*** %s: region is missing ***", DeviceClient::DC_FATAL_ERROR);
         return false;
     }
-    if (!port.has_value()
+
 #if !defined(EXCLUDE_ST)
-        || !SecureTunnelingFeature::IsValidPort(port.value()))
-#else
-    )
-#endif
+    if (!address.has_value() || address->empty() || !SecureTunnelingFeature::IsValidAddress(address.value()))
+    {
+        LOGM_ERROR(Config::TAG, "*** %s: address is missing or invalid ***", DeviceClient::DC_FATAL_ERROR);
+        return false;
+    }
+    if (!port.has_value() || !SecureTunnelingFeature::IsValidPort(port.value()))
     {
         LOGM_ERROR(Config::TAG, "*** %s: port is missing or invalid ***", DeviceClient::DC_FATAL_ERROR);
         return false;
     }
+#endif
 
     return true;
 }

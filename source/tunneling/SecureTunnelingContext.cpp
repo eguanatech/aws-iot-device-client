@@ -25,10 +25,11 @@ namespace Aws
                     const Aws::Crt::Optional<std::string> &rootCa,
                     const string &accessToken,
                     const string &endpoint,
+                    const string &address,
                     const int port,
                     const OnConnectionShutdownFn &onConnectionShutdown)
                     : mSharedCrtResourceManager(manager), mRootCa(rootCa.has_value() ? rootCa.value() : ""),
-                      mAccessToken(accessToken), mEndpoint(endpoint), mPort(port),
+                      mAccessToken(accessToken), mEndpoint(endpoint), mAddress(address), mPort(port),
                       mOnConnectionShutdown(onConnectionShutdown)
                 {
                 }
@@ -113,9 +114,15 @@ namespace Aws
 
                 void SecureTunnelingContext::ConnectToTcpForward()
                 {
+                    if (!SecureTunnelingFeature::IsValidAddress(mAddress))
+                    {
+                        LOGM_ERROR(TAG, "Cannot connect to invalid IP address. address=%s", mAddress.c_str());
+                        return;
+                    }
+
                     if (!SecureTunnelingFeature::IsValidPort(mPort))
                     {
-                        LOGM_ERROR(TAG, "Cannot connect to invalid local port. port=%u", mPort);
+                        LOGM_ERROR(TAG, "Cannot connect to invalid port. port=%u", mPort);
                         return;
                     }
 
@@ -212,6 +219,7 @@ namespace Aws
                 {
                     return std::make_shared<TcpForward>(
                         mSharedCrtResourceManager,
+                        mAddress,
                         mPort,
                         bind(&SecureTunnelingContext::OnTcpForwardDataReceive, this, placeholders::_1));
                 }

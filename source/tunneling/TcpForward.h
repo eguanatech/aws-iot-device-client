@@ -30,19 +30,24 @@ namespace Aws
                      * \brief Constructor
                      *
                      * @param sharedCrtResourceManager the shared resource manager
+                     * @param address the local IP address to connect to
                      * @param port the local TCP port to connect to
                      * @param onTcpForwardDataReceive callback when there is data received from the
                      * local TCP port
                      */
                     TcpForward(
                         std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager,
+                        std::string &address,
                         uint16_t port,
                         const OnTcpForwardDataReceive &onTcpForwardDataReceive);
 
                     /**
                      * \brief Constructor with no callback
                      */
-                    TcpForward(std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager, uint16_t port);
+                    TcpForward(
+                        std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager,
+                        std::string &address,
+                        uint16_t port);
 
                     /**
                      * \brief Destructor
@@ -128,17 +133,22 @@ namespace Aws
                     std::shared_ptr<SharedCrtResourceManager> mSharedCrtResourceManager;
 
                     /**
-                     * \brief The local TCP port to connect to
+                     * @brief The IP address to connect to
+                     */
+                    std::string mAddress;
+
+                    /**
+                     * \brief The TCP port to connect to
                      */
                     uint16_t mPort;
 
                     /**
-                     * \brief Callback when data is received from the local TCP port
+                     * \brief Callback when data is received from the TCP port
                      */
                     OnTcpForwardDataReceive mOnTcpForwardDataReceive;
 
                     /**
-                     * \brief An AWS SDK socket object. It manages the connection to the local TCP port.
+                     * \brief An AWS SDK socket object. It manages the connection to the TCP port.
                      */
                     aws_socket mSocket{};
 

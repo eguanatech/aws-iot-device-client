@@ -36,7 +36,8 @@ namespace Aws
                      * @param rootCa path to the Amazon root CA
                      * @param accessToken destination access token for connecting to a secure tunnel
                      * @param endpoint secure tunneling data plain endpoint
-                     * @param port the local TCP port to connect to
+                     * @param address the IP address to connect to
+                     * @param port the TCP port to connect to
                      * @param onConnectionShutdown callback when the secure tunnel is shutdown
                      */
                     SecureTunnelingContext(
@@ -44,6 +45,7 @@ namespace Aws
                         const Aws::Crt::Optional<std::string> &rootCa,
                         const std::string &accessToken,
                         const std::string &endpoint,
+                        const std::string &address,
                         const int port,
                         const OnConnectionShutdownFn &onConnectionShutdown);
 
@@ -194,7 +196,12 @@ namespace Aws
                     std::string mEndpoint;
 
                     /**
-                     * \brief The local TCP port to connect to
+                     * \brief The IP address to connect to
+                     */
+                    std::string mAddress;
+
+                    /**
+                     * \brief The TCP port to connect to
                      */
                     uint16_t mPort{22};
 

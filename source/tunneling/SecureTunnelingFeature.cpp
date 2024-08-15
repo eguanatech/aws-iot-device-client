@@ -7,6 +7,7 @@
 #include "TcpForward.h"
 #include <aws/crt/mqtt/MqttClient.h>
 #include <aws/iotsecuretunneling/SubscribeToTunnelsNotifyRequest.h>
+#include <arpa/inet.h>
 #include <csignal>
 #include <map>
 #include <memory>
@@ -28,6 +29,8 @@ namespace Aws
                 constexpr char SecureTunnelingFeature::TAG[];
                 constexpr char SecureTunnelingFeature::NAME[];
                 constexpr char SecureTunnelingFeature::DEFAULT_PROXY_ENDPOINT_HOST_FORMAT[];
+                constexpr char SecureTunnelingFeature::TCP_OPERSTATE_FILE[];
+                std::map<std::string, std::string> SecureTunnelingFeature::mServiceToAddressMap;
                 std::map<std::string, uint16_t> SecureTunnelingFeature::mServiceToPortMap;
 
                 SecureTunnelingFeature::SecureTunnelingFeature() = default;
@@ -72,12 +75,33 @@ namespace Aws
                     return 0;
                 }
 
+                string SecureTunnelingFeature::GetAddressFromService(const std::string &service)
+                {
+                    if (mServiceToAddressMap.empty())
+                    {
+                        mServiceToAddressMap["SSH"] = "10.3.2.1";
+                        mServiceToAddressMap["GW"] = "10.3.2.1";
+                        mServiceToAddressMap["TIVA_TCP"] = "169.254.0.5";
+                        mServiceToAddressMap["TIVA_RS485"] = "10.3.2.1";
+                    }
+
+                    auto result = mServiceToAddressMap.find(AppendPostfixToService(service));
+                    if (result == mServiceToAddressMap.end())
+                    {
+                        LOGM_ERROR(TAG, "Requested unsupported service. service=%s", service.c_str());
+                        return ""; // TODO: Consider throw
+                    }
+
+                    return result->second;
+                }
+
                 uint16_t SecureTunnelingFeature::GetPortFromService(const std::string &service)
                 {
                     if (mServiceToPortMap.empty())
                     {
                         mServiceToPortMap["SSH"] = 22;
-                        mServiceToPortMap["VNC"] = 5900;
+                        mServiceToPortMap["GW"] = 8080;
+                        mServiceToPortMap["TIVA"] = 502;
                     }
 
                     auto result = mServiceToPortMap.find(service);
@@ -88,6 +112,44 @@ namespace Aws
                     }
 
                     return result->second;
+                }
+
+                string SecureTunnelingFeature::AppendPostfixToService(const string &service)
+                {
+                    if (service != "TIVA")
+                    {
+                        return service;
+                    }
+
+                    ifstream file(TCP_OPERSTATE_FILE);
+                    if (file.is_open())
+                    {
+                        string state;
+                        if (getline(file, state))
+                        {
+                            if (state == "up")
+                            {
+                                return service + "_TCP";
+                            }
+                        }
+                    }
+
+                    StartNetcatListener();
+
+                    return service + "_RS485";
+                }
+
+                void SecureTunnelingFeature::StartNetcatListener()
+                {
+                    thread([]() {
+                        system("nc -l -p 502 -k -e /bin/cat /dev/ttymxc2");
+                    }).detach();
+                }
+
+                bool SecureTunnelingFeature::IsValidAddress(const string &address)
+                {
+                    struct sockaddr_in sa;
+                    return inet_pton(AF_INET, address.c_str(), &(sa.sin_addr)) == 1;
                 }
 
                 bool SecureTunnelingFeature::IsValidPort(int port) { return 1 <= port && port <= 65535; }
@@ -106,6 +168,7 @@ namespace Aws
                             mRootCa,
                             *config.tunneling.destinationAccessToken,
                             GetEndpoint(*config.tunneling.region),
+                            *config.tunneling.address,
                             static_cast<uint16_t>(config.tunneling.port.value()),
                             bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
                         mContexts.push_back(std::move(context));
@@ -200,16 +263,26 @@ namespace Aws
                     string region = response->Region->c_str();
 
                     string service = response->Services->at(0).c_str();
-                    uint16_t port = GetPortFromService(service);
-                    if (!IsValidPort(port))
+
+                    string address = GetAddressFromService(service);
+
+                    if (!IsValidAddress(address))
                     {
-                        LOGM_ERROR(TAG, "Requested service is not supported: %s", service.c_str());
+                        LOGM_ERROR(TAG, "Requested service %s is not supported: invalid destination IP address %s", service.c_str(), address.c_str());
                         return;
                     }
 
-                    LOGM_DEBUG(TAG, "Region=%s, Service=%s", region.c_str(), service.c_str());
+                    uint16_t port = GetPortFromService(service);
 
-                    auto context = createContext(accessToken, region, port);
+                    if (!IsValidPort(port))
+                    {
+                        LOGM_ERROR(TAG, "Requested service %s is not supported: invalid destination TCP port %u", service.c_str(), port);
+                        return;
+                    }
+
+                    LOGM_DEBUG(TAG, "Region=%s, Service=%s, Destination=%s:%u", region.c_str(), service.c_str(), address.c_str(), port);
+
+                    auto context = createContext(accessToken, region, address, port);
 
                     if (context->ConnectToSecureTunnel())
                     {
@@ -253,6 +326,7 @@ namespace Aws
                 std::unique_ptr<SecureTunnelingContext> SecureTunnelingFeature::createContext(
                     const std::string &accessToken,
                     const std::string &region,
+                    const std::string &address,
                     const uint16_t &port)
                 {
                     return std::unique_ptr<SecureTunnelingContext>(new SecureTunnelingContext(
@@ -260,6 +334,7 @@ namespace Aws
                         mRootCa,
                         accessToken,
                         GetEndpoint(region),
+                        address,
                         port,
                         bind(&SecureTunnelingFeature::OnConnectionShutdown, this, placeholders::_1)));
                 }
