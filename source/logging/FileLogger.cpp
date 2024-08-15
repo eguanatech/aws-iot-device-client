@@ -110,6 +110,17 @@ void FileLogger::run()
 
     while (!needsShutdown)
     {
+        struct timespec timeSpec;
+        if (clock_gettime(CLOCK_MONOTONIC, &timeSpec) == 0)
+        {
+            time_t retTime = timeSpec.tv_sec;
+
+            /* Update watchdog file with current time. */
+            ofstream ofs("/var/run/watchdog.aws-iot-device-client");
+            ofs << retTime << endl;
+            ofs.close();
+        }
+
         unique_ptr<LogMessage> message = logQueue->getNextLog();
 
         if (nullptr != message)
