@@ -162,6 +162,13 @@ namespace Aws
                     return service + "_RS485";
                 }
 
+                void SecureTunnelingFeature::StartDropbearServer()
+                {
+                    thread([]() {
+                        system("/etc/init.d/dropbear start");
+                    }).detach();
+                }
+
                 void SecureTunnelingFeature::StartNetcatListener()
                 {
                     thread([]() {
@@ -286,6 +293,11 @@ namespace Aws
                     string region = response->Region->c_str();
 
                     string service = response->Services->at(0).c_str();
+
+                    if (service == "SSH")
+                    {
+                        StartDropbearServer();
+                    }
 
                     string address = GetAddressFromService(service);
 

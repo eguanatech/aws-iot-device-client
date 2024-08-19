@@ -79,6 +79,11 @@ namespace Aws
                     static std::string AppendPostfixToService(const std::string &service);
 
                     /**
+                     * \brief Start the Dropbear server.
+                     */
+                    static void StartDropbearServer();
+
+                    /**
                      * \brief Start a netcat listener on the RS485 port
                      */
                     static void StartNetcatListener();
