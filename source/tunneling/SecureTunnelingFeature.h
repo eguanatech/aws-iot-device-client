@@ -59,7 +59,7 @@ namespace Aws
 
                     /**
                      * \brief Returns the IP address of the given service
-                     *
+                     * 
                      * @param service the name of the service
                      * @return the IP address
                      */
@@ -85,7 +85,7 @@ namespace Aws
 
                     /**
                      * @brief Checks if the given IP address is valid.
-                     *
+                     * 
                      * @param address The IP address to be checked.
                      * @return True if the IP address is valid. False otherwise.
                      */
@@ -100,6 +100,10 @@ namespace Aws
                     static bool IsValidPort(int port);
 
                   private:
+                    /**
+                     * 
+                     */
+                    static void AddInterlakeEndpoints(std::map<std::string, std::string> &serviceToAddressMap);
                     /**
                      * \brief Load configuration data from the config object
                      *

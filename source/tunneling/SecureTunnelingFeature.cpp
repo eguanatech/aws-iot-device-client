@@ -5,6 +5,7 @@
 #include "../logging/LoggerFactory.h"
 #include "SecureTunnelingContext.h"
 #include "TcpForward.h"
+#include "EguanaTunneling.h"
 #include <aws/crt/mqtt/MqttClient.h>
 #include <aws/iotsecuretunneling/SubscribeToTunnelsNotifyRequest.h>
 #include <arpa/inet.h>
@@ -75,14 +76,36 @@ namespace Aws
                     return 0;
                 }
 
+                /**
+                 * @brief Adds interlake endpoints to the serviceToAddressMap.
+                 *
+                 * This function is responsible for adding interlake endpoints to the provided serviceToAddressMap.
+                 * The interlake endpoints are allocated based on the MAX_INTERLAKE_SYSTEM_SIZE constant.
+                 * Each interlake system is assigned an IP address starting from "169.254.0.6" onwards.
+                 * The master system is assigned the IP address "169.254.0.6", and subsequent slave systems are assigned IP addresses in sequential order.
+                 *
+                 * @param serviceToAddressMap The map to which the interlake endpoints will be added.
+                 */
+                void SecureTunnelingFeature::AddInterlakeEndpoints(std::map<std::string, std::string>& serviceToAddressMap)
+                {
+                    for (int i = 0; i < MAX_INTERLAKE_SYSTEM_SIZE; i++)
+                    {
+                        std::string key = TIVA_SERVICE_ID_PREFIX + std::to_string(i);
+                        std::string value = TIVA_TCP_IP_ADDRESS_PREFIX + std::to_string(MASTER_SYSTEM_HOST_ID + i);
+                        serviceToAddressMap[key] = value;
+                    }
+                }
+
                 string SecureTunnelingFeature::GetAddressFromService(const std::string &service)
                 {
                     if (mServiceToAddressMap.empty())
                     {
-                        mServiceToAddressMap["SSH"] = "10.3.2.1";
-                        mServiceToAddressMap["GW"] = "10.3.2.1";
-                        mServiceToAddressMap["TIVA_TCP"] = "169.254.0.5";
-                        mServiceToAddressMap["TIVA_RS485"] = "10.3.2.1";
+                        mServiceToAddressMap["SSH"] = EMC_NETWORK_BRIDGE_IP_ADDRESS;
+                        mServiceToAddressMap["GW"] = EMC_NETWORK_BRIDGE_IP_ADDRESS;
+                        mServiceToAddressMap["TIVA_TCP"] = TIVA_TCP_IP_ADDRESS;
+                        mServiceToAddressMap["TIVA_RS485"] = TIVA_RS485_IP_ADDRESS;
+
+                        AddInterlakeEndpoints(mServiceToAddressMap);
                     }
 
                     auto result = mServiceToAddressMap.find(AppendPostfixToService(service));
@@ -99,9 +122,9 @@ namespace Aws
                 {
                     if (mServiceToPortMap.empty())
                     {
-                        mServiceToPortMap["SSH"] = 22;
-                        mServiceToPortMap["GW"] = 8080;
-                        mServiceToPortMap["TIVA"] = 502;
+                        mServiceToPortMap["SSH"] = SSH_TCP_PORT;
+                        mServiceToPortMap["GW"] = GW_TCP_PORT;
+                        mServiceToPortMap["TIVA"] = TIVA_TCP_PORT;
                     }
 
                     auto result = mServiceToPortMap.find(service);
