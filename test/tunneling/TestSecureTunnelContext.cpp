@@ -24,9 +24,10 @@ class MockSecureTunnelingContext : public SecureTunnelingContext
         const Aws::Crt::Optional<std::string> &rootCa,
         const string &accessToken,
         const string &endpoint,
+        const string &address,
         const int port,
         const OnConnectionShutdownFn &onConnectionShutdown)
-        : SecureTunnelingContext(manager, rootCa, accessToken, endpoint, port, onConnectionShutdown)
+        : SecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, port, onConnectionShutdown)
     {
     }
 
@@ -59,8 +60,8 @@ class MockSecureTunnel : public SecureTunnelWrapper
 class MockTcpForward : public TcpForward
 {
   public:
-    MockTcpForward(std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager, uint16_t port)
-        : TcpForward(sharedCrtResourceManager, port)
+    MockTcpForward(std::shared_ptr<SharedCrtResourceManager> sharedCrtResourceManager, string &address, uint16_t port)
+        : TcpForward(sharedCrtResourceManager, address, port)
     {
     }
     MOCK_METHOD(int, Connect, (), (override));
@@ -74,10 +75,11 @@ class TestSecureTunnelContext : public testing::Test
     {
         manager = shared_ptr<SharedCrtResourceManager>(new SharedCrtResourceManager());
         tunnel = shared_ptr<MockSecureTunnel>(new MockSecureTunnel());
-        tcpForward = shared_ptr<MockTcpForward>(new MockTcpForward(manager, port));
+        tcpForward = shared_ptr<MockTcpForward>(new MockTcpForward(manager, address, port));
         rootCa = "root-ca-value";
         accessToken = "access-token-value";
         endpoint = "endpoint-value";
+        address = "10.3.2.1";
         port = 5555;
     }
     unique_ptr<MockSecureTunnelingContext> context;
@@ -87,6 +89,7 @@ class TestSecureTunnelContext : public testing::Test
     Aws::Crt::Optional<std::string> rootCa;
     string accessToken;
     string endpoint;
+    string address;
     int port;
     OnConnectionShutdownFn onConnectionShutdown;
 };
@@ -98,7 +101,7 @@ TEST_F(TestSecureTunnelContext, ConnectToSecureTunnelHappy)
      * Verify ConnectToSecureTunnel returns true
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, port, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, port, nullptr));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _)).WillOnce(Return(tunnel));
     EXPECT_CALL(*tunnel, Connect()).WillOnce(Return(0));
@@ -114,7 +117,7 @@ TEST_F(TestSecureTunnelContext, ConnectToSecureTunnelMissingAccessToken)
      * Verify ConnectToSecureTunnel returns false
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, "", "12345", port, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, "", "12345", address, port, nullptr));
 
     ASSERT_FALSE(context->ConnectToSecureTunnel());
 }
@@ -126,7 +129,7 @@ TEST_F(TestSecureTunnelContext, ConnectToSecureTunnelMissingEndpoint)
      * Verify ConnectToSecureTunnel returns false
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, "12345", "", port, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, "12345", "", address, port, nullptr));
 
     ASSERT_FALSE(context->ConnectToSecureTunnel());
 }
@@ -139,7 +142,7 @@ TEST_F(TestSecureTunnelContext, OnStreamStartHappy)
      * Verify calls on TcpForward, SecureTunnel, and that ConnectToSecureTunnel returns true
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, port, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, port, nullptr));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _)).WillOnce(DoAll(InvokeArgument<4>(), Return(tunnel)));
     EXPECT_CALL(*context, CreateTcpForward()).WillOnce(Return(tcpForward));
@@ -157,7 +160,7 @@ TEST_F(TestSecureTunnelContext, OnStreamStartInvalidPortLow)
      * Verify no create TcpForward
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, 0, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, 0, nullptr));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _)).WillOnce(DoAll(InvokeArgument<4>(), Return(tunnel)));
     EXPECT_CALL(*context, CreateTcpForward()).Times(0);
@@ -174,7 +177,7 @@ TEST_F(TestSecureTunnelContext, OnStreamStartInvalidPortHigh)
      * Verify no create TcpForward
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, 65536, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, 65536, nullptr));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _)).WillOnce(DoAll(InvokeArgument<4>(), Return(tunnel)));
     EXPECT_CALL(*context, CreateTcpForward()).Times(0);
@@ -192,7 +195,7 @@ TEST_F(TestSecureTunnelContext, OnStreamReset)
      * Verify calls on tunnel and DisconnectTcpForward, ConnectToSecureTunnel returns true
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, port, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, port, nullptr));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _)).WillOnce(DoAll(InvokeArgument<5>(), Return(tunnel)));
     EXPECT_CALL(*context, DisconnectFromTcpForward()).Times(1);
@@ -210,7 +213,7 @@ TEST_F(TestSecureTunnelContext, OnSessionReset)
      * Verify calls on tunnel and DisconnectTcpForward, ConnectToSecureTunnel returns true
      */
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, port, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, port, nullptr));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _)).WillOnce(DoAll(InvokeArgument<6>(), Return(tunnel)));
     EXPECT_CALL(*context, DisconnectFromTcpForward()).Times(1);
@@ -230,7 +233,7 @@ TEST_F(TestSecureTunnelContext, OnDataReceive)
     Crt::ByteBuf data = ByteBufFromCString("Test Data");
 
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, port, nullptr));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, port, nullptr));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _))
         .WillOnce(DoAll(InvokeArgument<4>(), InvokeArgument<3>(data), Return(tunnel)));
@@ -254,7 +257,7 @@ TEST_F(TestSecureTunnelContext, OnConnectionShutdown)
     std::promise<void> promise;
     onConnectionShutdown = [&](SecureTunnelingContext *) -> void { promise.set_value(); };
     context = unique_ptr<MockSecureTunnelingContext>(
-        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, port, onConnectionShutdown));
+        new MockSecureTunnelingContext(manager, rootCa, accessToken, endpoint, address, port, onConnectionShutdown));
 
     EXPECT_CALL(*context, CreateSecureTunnel(_, _, _, _, _, _, _)).WillOnce(DoAll(InvokeArgument<1>(), Return(tunnel)));
     EXPECT_CALL(*tunnel, Connect()).WillOnce(Return(0));
