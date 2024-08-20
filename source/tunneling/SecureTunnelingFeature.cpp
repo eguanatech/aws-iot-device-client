@@ -172,7 +172,7 @@ namespace Aws
                 void SecureTunnelingFeature::StartNetcatListener()
                 {
                     thread([]() {
-                        system("nc -l -p 502 -k -e /bin/cat /dev/ttymxc2");
+                        system("nc -l -p 502 -e /bin/cat /dev/ttymxc2");
                     }).detach();
                 }
 
