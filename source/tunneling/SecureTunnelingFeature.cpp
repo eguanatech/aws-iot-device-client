@@ -9,6 +9,7 @@
 #include <aws/crt/mqtt/MqttClient.h>
 #include <aws/iotsecuretunneling/SubscribeToTunnelsNotifyRequest.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <csignal>
 #include <map>
 #include <memory>
@@ -157,8 +158,6 @@ namespace Aws
                         }
                     }
 
-                    StartNetcatListener();
-
                     return service + "_RS485";
                 }
 
@@ -167,13 +166,38 @@ namespace Aws
                     thread([]() {
                         system("/etc/init.d/dropbear start");
                     }).detach();
+
+                    LOG_DEBUG(TAG, "Dropbear server is started");
                 }
 
                 void SecureTunnelingFeature::StartNetcatListener()
                 {
-                    thread([]() {
-                        system("nc -l -p 502 -e /bin/cat /dev/ttymxc2");
-                    }).detach();
+                    int ret = system("pidof nc");
+                    if (ret != 0)
+                    {
+                        LOG_DEBUG(TAG, "Starting netcat listener");
+                        thread([]() {
+                            system(("nc -l -p " + std::to_string(TIVA_TCP_PORT) + " > " + TIVA_RS485_DEVICE_FILE + " < " + TIVA_RS485_DEVICE_FILE).c_str());
+                        }).detach();
+
+                        /* Issue found during RS485 TIVA upgrade, looks like the cilent tries to talk to the destination before the netcat is effective.
+                         * Added a one second delay to work around this for now.
+                         */
+                        sleep(1);
+
+                        if (system("pidof nc") != 0)
+                        {
+                            LOG_ERROR(TAG, "Failed to start netcat listener");
+                        }
+                        else
+                        {
+                            LOG_DEBUG(TAG, "Netcat listener is started");
+                        }
+                    }
+                    else
+                    {
+                        LOG_DEBUG(TAG, "Netcat listener is already running");
+                    }
                 }
 
                 bool SecureTunnelingFeature::IsValidAddress(const string &address)
@@ -293,11 +317,6 @@ namespace Aws
                     string region = response->Region->c_str();
 
                     string service = response->Services->at(0).c_str();
-
-                    if (service == "SSH")
-                    {
-                        StartDropbearServer();
-                    }
 
                     string address = GetAddressFromService(service);
 

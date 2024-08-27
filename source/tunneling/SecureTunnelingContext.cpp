@@ -4,6 +4,7 @@
 #include "SecureTunnelingContext.h"
 #include "../logging/LoggerFactory.h"
 #include "SecureTunnelingFeature.h"
+#include "EguanaTunneling.h"
 #include <aws/iotsecuretunneling/SecureTunnel.h>
 
 using namespace std;
@@ -124,6 +125,16 @@ namespace Aws
                     {
                         LOGM_ERROR(TAG, "Cannot connect to invalid port. port=%u", mPort);
                         return;
+                    }
+
+                    if (mAddress == EMC_NETWORK_BRIDGE_IP_ADDRESS && mPort == SSH_TCP_PORT)
+                    {
+                        SecureTunnelingFeature::StartDropbearServer();
+                    }
+
+                    if (mAddress == TIVA_RS485_IP_ADDRESS && mPort == TIVA_TCP_PORT)
+                    {
+                        SecureTunnelingFeature::StartNetcatListener();
                     }
 
                     mTcpForward = CreateTcpForward();
