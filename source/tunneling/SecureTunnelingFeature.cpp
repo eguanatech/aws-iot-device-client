@@ -326,7 +326,7 @@ namespace Aws
                         return;
                     }
 
-                    uint16_t port = GetPortFromService(service.substr(0, service.find("_")));
+                    uint16_t port = GetPortFromService(service);
 
                     if (!IsValidPort(port))
                     {

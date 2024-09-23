@@ -493,7 +493,7 @@ bool FleetProvisioning::ProvisionDevice(shared_ptr<SharedCrtResourceManager> fpC
     {
         LOG_INFO(TAG, "Fleet Provisioning Feature has been started.");
 
-        bool didSetup = FileUtils::CreateDirectoryWithPermissions(keyDir.c_str(), S_IRWXU) &&
+        bool didSetup = FileUtils::CreateDirectoryWithPermissions(keyDir.c_str(), S_IRWXU | S_IRGRP | S_IROTH | S_IXOTH) &&
                         FileUtils::CreateDirectoryWithPermissions(
                             Config::DEFAULT_CONFIG_DIR, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IROTH | S_IXOTH);
         if (!didSetup)
