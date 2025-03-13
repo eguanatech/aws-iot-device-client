@@ -172,12 +172,14 @@ namespace Aws
 
                 void SecureTunnelingFeature::StartNetcatListener()
                 {
-                    int ret = system("pidof nc");
+                    int ret = system("pidof socat");
                     if (ret != 0)
                     {
-                        LOG_DEBUG(TAG, "Starting netcat listener");
+                        LOG_DEBUG(TAG, "Starting socat listener");
                         thread([]() {
-                            system(("nc -l -p " + std::to_string(TIVA_TCP_PORT) + " > " + TIVA_RS485_DEVICE_FILE + " < " + TIVA_RS485_DEVICE_FILE).c_str());
+                            // system(("nc -l -p " + std::to_string(TIVA_TCP_PORT) + " > " + TIVA_RS485_DEVICE_FILE + " < " + TIVA_RS485_DEVICE_FILE).c_str());
+                            system(("stty -F /dev/usbRs485Inverter 115200 cs8 -cstopb -parenb -crtscts"));
+                            system(("socat TCP-LISTEN:502,reuseaddr,fork FILE:/dev/usbRs485Inverter,raw,echo=0"));
                         }).detach();
 
                         /* Issue found during RS485 TIVA upgrade, looks like the cilent tries to talk to the destination before the netcat is effective.
@@ -185,18 +187,18 @@ namespace Aws
                          */
                         sleep(1);
 
-                        if (system("pidof nc") != 0)
+                        if (system("pidof socat") != 0)
                         {
-                            LOG_ERROR(TAG, "Failed to start netcat listener");
+                            LOG_ERROR(TAG, "Failed to start socat listener");
                         }
                         else
                         {
-                            LOG_DEBUG(TAG, "Netcat listener is started");
+                            LOG_DEBUG(TAG, "Socat listener is started");
                         }
                     }
                     else
                     {
-                        LOG_DEBUG(TAG, "Netcat listener is already running");
+                        LOG_DEBUG(TAG, "Socat listener is already running");
                     }
                 }
 
