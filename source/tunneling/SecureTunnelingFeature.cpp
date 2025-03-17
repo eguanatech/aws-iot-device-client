@@ -163,21 +163,51 @@ namespace Aws
 
                 void SecureTunnelingFeature::StartDropbearServer()
                 {
-                    thread([]() {
-                        system("/etc/init.d/dropbear start");
-                    }).detach();
-
-                    LOG_DEBUG(TAG, "Dropbear server is started");
-                }
-
-                void SecureTunnelingFeature::StartNetcatListener()
-                {
-                    int ret = system("pidof nc");
+                    int ret = system("pidof socat");
                     if (ret != 0)
                     {
-                        LOG_DEBUG(TAG, "Starting netcat listener");
+                        LOG_DEBUG(TAG, "Starting Dropbear server");
                         thread([]() {
-                            system(("nc -l -p " + std::to_string(TIVA_TCP_PORT) + " > " + TIVA_RS485_DEVICE_FILE + " < " + TIVA_RS485_DEVICE_FILE).c_str());
+                            system("/etc/init.d/dropbear start");
+                        }).detach();
+
+                        /**
+                         * Add a delay to allow the dropbear server to start before the client tries to connect.
+                         */
+                        sleep(1);
+
+                        if (system("pidof dropbear") != 0)
+                        {
+                            LOG_ERROR(TAG, "Failed to start Dropbear server");
+                        }
+                        else
+                        {
+                            LOG_DEBUG(TAG, "Dropbear server is started");
+                        }
+                    }
+                    else
+                    {
+                        LOG_DEBUG(TAG, "Dropbear server is already running");
+                    }
+                }
+
+                void SecureTunnelingFeature::ConfigureRs485Interface()
+                {
+                    thread([]() {
+                        system(("stty -F " + std::string(TIVA_RS485_DEVICE_FILE) + " 115200 cs8 -cstopb -parenb -crtscts").c_str());
+                    }).detach();
+
+                    LOG_DEBUG(TAG, "RS485 interface is configured");
+                }
+
+                void SecureTunnelingFeature::StartSocatListener()
+                {
+                    int ret = system("pidof socat");
+                    if (ret != 0)
+                    {
+                        LOG_DEBUG(TAG, "Starting socat listener");
+                        thread([]() {
+                            system(("socat TCP-LISTEN:" + std::to_string(TIVA_TCP_PORT) + ",reuseaddr,fork FILE:" + std::string(TIVA_RS485_DEVICE_FILE) + ",nonblock,raw,echo=0").c_str());
                         }).detach();
 
                         /* Issue found during RS485 TIVA upgrade, looks like the cilent tries to talk to the destination before the netcat is effective.
@@ -185,18 +215,18 @@ namespace Aws
                          */
                         sleep(1);
 
-                        if (system("pidof nc") != 0)
+                        if (system("pidof socat") != 0)
                         {
-                            LOG_ERROR(TAG, "Failed to start netcat listener");
+                            LOG_ERROR(TAG, "Failed to start socat listener");
                         }
                         else
                         {
-                            LOG_DEBUG(TAG, "Netcat listener is started");
+                            LOG_DEBUG(TAG, "Socat listener is started");
                         }
                     }
                     else
                     {
-                        LOG_DEBUG(TAG, "Netcat listener is already running");
+                        LOG_DEBUG(TAG, "Socat listener is already running");
                     }
                 }
 

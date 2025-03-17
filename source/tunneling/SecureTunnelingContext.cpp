@@ -134,7 +134,8 @@ namespace Aws
 
                     if (mAddress == TIVA_RS485_IP_ADDRESS && mPort == TIVA_TCP_PORT)
                     {
-                        SecureTunnelingFeature::StartNetcatListener();
+                        SecureTunnelingFeature::ConfigureRs485Interface();
+                        SecureTunnelingFeature::StartSocatListener();
                     }
 
                     mTcpForward = CreateTcpForward();

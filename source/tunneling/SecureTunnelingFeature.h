@@ -83,10 +83,12 @@ namespace Aws
                      */
                     static void StartDropbearServer();
 
+                    static void ConfigureRs485Interface();
+
                     /**
                      * \brief Start a netcat listener on the RS485 port
                      */
-                    static void StartNetcatListener();
+                    static void StartSocatListener();
 
                     /**
                      * @brief Checks if the given IP address is valid.
