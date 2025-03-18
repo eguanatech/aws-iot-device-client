@@ -31,7 +31,6 @@ namespace Aws
                 constexpr char SecureTunnelingFeature::TAG[];
                 constexpr char SecureTunnelingFeature::NAME[];
                 constexpr char SecureTunnelingFeature::DEFAULT_PROXY_ENDPOINT_HOST_FORMAT[];
-                constexpr char SecureTunnelingFeature::TCP_OPERSTATE_FILE[];
                 std::map<std::string, std::string> SecureTunnelingFeature::mServiceToAddressMap;
                 std::map<std::string, uint16_t> SecureTunnelingFeature::mServiceToPortMap;
 
@@ -145,17 +144,9 @@ namespace Aws
                         return service;
                     }
 
-                    ifstream file(TCP_OPERSTATE_FILE);
-                    if (file.is_open())
+                    if (access(TIVA_RS485_DEVICE_FILE, F_OK) != 0)
                     {
-                        string state;
-                        if (getline(file, state))
-                        {
-                            if (state == "up")
-                            {
-                                return service + "_TCP";
-                            }
-                        }
+                        return service + "_TCP";
                     }
 
                     return service + "_RS485";

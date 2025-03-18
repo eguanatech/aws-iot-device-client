@@ -8,7 +8,7 @@
 #define GW_TCP_PORT 8080
 #define TIVA_TCP_PORT 502
 
-#define TIVA_RS485_DEVICE_FILE "/dev/ttys/rs485_1"
+#define TIVA_RS485_DEVICE_FILE "/dev/usbRs485Inverter"
 
 #define EMC_NETWORK_BRIDGE_IP_ADDRESS "10.3.2.1"
 #define TIVA_TCP_IP_ADDRESS "169.254.0.5"

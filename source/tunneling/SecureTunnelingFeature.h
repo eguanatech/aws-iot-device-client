@@ -191,11 +191,6 @@ namespace Aws
                     static constexpr char DEFAULT_PROXY_ENDPOINT_HOST_FORMAT[] = "data.tunneling.iot.%s.amazonaws.com";
 
                     /**
-                     * @brief Path to the file that represents the operational state of the TCP connection.
-                     */
-                    static constexpr char TCP_OPERSTATE_FILE[] = "/sys/class/net/eth3/operstate";
-
-                    /**
                      * \brief A map for converting supported services to their IP addresses
                      */
                     static std::map<std::string, std::string> mServiceToAddressMap;
