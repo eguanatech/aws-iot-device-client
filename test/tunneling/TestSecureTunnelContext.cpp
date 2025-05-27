@@ -79,7 +79,7 @@ class TestSecureTunnelContext : public testing::Test
         rootCa = "root-ca-value";
         accessToken = "access-token-value";
         endpoint = "endpoint-value";
-        address = "10.3.2.1";
+        address = "0.0.0.0";
         port = 5555;
     }
     unique_ptr<MockSecureTunnelingContext> context;

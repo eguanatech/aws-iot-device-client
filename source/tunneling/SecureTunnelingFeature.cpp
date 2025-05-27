@@ -100,8 +100,8 @@ namespace Aws
                 {
                     if (mServiceToAddressMap.empty())
                     {
-                        mServiceToAddressMap["SSH"] = EMC_NETWORK_BRIDGE_IP_ADDRESS;
-                        mServiceToAddressMap["GW"] = EMC_NETWORK_BRIDGE_IP_ADDRESS;
+                        mServiceToAddressMap["SSH"] = EMC_LOCAL_INTERFACES_IP_ADDRESS;
+                        mServiceToAddressMap["GW"] = EMC_LOCAL_INTERFACES_IP_ADDRESS;
                         mServiceToAddressMap["TIVA_TCP"] = TIVA_TCP_IP_ADDRESS;
                         mServiceToAddressMap["TIVA_RS485"] = TIVA_RS485_IP_ADDRESS;
 
