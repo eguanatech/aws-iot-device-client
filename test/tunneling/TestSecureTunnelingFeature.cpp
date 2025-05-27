@@ -150,7 +150,7 @@ TEST_F(TestSecureTunnelingFeature, CreateSSHContextHappy)
      */
     string accessToken = "12345";
     string region = "us-west-2";
-    string address = "10.3.2.1";
+    string address = "0.0.0.0";
     uint16_t port = 22;
     Aws::Crt::Vector<Aws::Crt::String> services;
     services.push_back("SSH");
@@ -180,7 +180,7 @@ TEST_F(TestSecureTunnelingFeature, CreateGWContextHappy)
      */
     string accessToken = "12345";
     string region = "us-west-2";
-    string address = "10.3.2.1";
+    string address = "0.0.0.0";
     uint16_t port = 8080;
     Aws::Crt::Vector<Aws::Crt::String> services;
     services.push_back("GW");
@@ -210,7 +210,7 @@ TEST_F(TestSecureTunnelingFeature, CreateTIVAContextHappy)
      */
     string accessToken = "12345";
     string region = "us-west-2";
-    string address = "10.3.2.1";
+    string address = "0.0.0.0";
     uint16_t port = 502;
     Aws::Crt::Vector<Aws::Crt::String> services;
     services.push_back("TIVA");
@@ -221,7 +221,7 @@ TEST_F(TestSecureTunnelingFeature, CreateTIVAContextHappy)
         string state;
         if (getline(file, state))
         {
-            if (state == "up")
+            if (state.substr(0, 2) == "up")
             {
                 address = "169.254.0.5";
             }
@@ -299,7 +299,7 @@ TEST_F(TestSecureTunnelingFeature, DuplicateResponse)
      */
     string accessToken = "12345";
     string region = "us-west-2";
-    string address = "10.3.2.1";
+    string address = "0.0.0.0";
     uint16_t port = 22;
     Aws::Crt::Vector<Aws::Crt::String> services;
     services.push_back("SSH");

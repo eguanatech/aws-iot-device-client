@@ -127,7 +127,7 @@ namespace Aws
                         return;
                     }
 
-                    if (mAddress == EMC_NETWORK_BRIDGE_IP_ADDRESS && mPort == SSH_TCP_PORT)
+                    if (mAddress == EMC_LOCAL_INTERFACES_IP_ADDRESS && mPort == SSH_TCP_PORT)
                     {
                         SecureTunnelingFeature::StartDropbearServer();
                     }
