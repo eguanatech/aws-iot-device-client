@@ -24,6 +24,7 @@
     - [Connecting to the Slave inverter](#connecting-to-the-slave-inverter)
   - [ECI connection to MUC / Cascade inverter (TCP)](#connecting-eci-to-muc--cascade-system-tcp)
   - [AWS IoT Jobs](#aws-iot-jobs)
+- [Compiling the device client](#compiling-the-device-client)
 
 ---
 
