@@ -59,7 +59,13 @@ namespace Aws
                     aws_event_loop *eventLoop = aws_event_loop_group_get_next_loop(
                         mSharedCrtResourceManager->getEventLoopGroup()->GetUnderlyingHandle());
 
-                    aws_socket_connect(&mSocket, &endpoint, eventLoop, sOnConnectionResult, this);
+                    aws_socket_connect_options connect_options{};
+                    connect_options.remote_endpoint = &endpoint;
+                    connect_options.event_loop = eventLoop;
+                    connect_options.on_connection_result = sOnConnectionResult;
+                    connect_options.user_data = this;
+
+                    aws_socket_connect(&mSocket, &connect_options);
 
                     return 0;
                 }
@@ -168,6 +174,6 @@ namespace Aws
                 }
 
             } // namespace SecureTunneling
-        }     // namespace DeviceClient
-    }         // namespace Iot
+        } // namespace DeviceClient
+    } // namespace Iot
 } // namespace Aws

@@ -59,17 +59,17 @@ RUN apt update && apt upgrade -y && \
 RUN mkdir /home/dependencies
 WORKDIR /home/dependencies
 
-RUN wget https://www.zlib.net/zlib-1.3.tar.gz -O /tmp/zlib-1.3.tar.gz && \
-	tar xzvf /tmp/zlib-1.3.tar.gz && \
-	cd zlib-1.3 && \
+RUN wget https://zlib.net/zlib-1.3.1.tar.gz -O /tmp/zlib-1.3.1.tar.gz && \
+	tar xzvf /tmp/zlib-1.3.1.tar.gz && \
+	cd zlib-1.3.1 && \
 	./configure && \
 	make && \
 	make install && \
 	cd /home/dependencies
 
-RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.tar.gz -O /tmp/boost.tar.gz && \
+RUN wget https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.gz -O /tmp/boost.tar.gz && \
 	tar xzvf /tmp/boost.tar.gz && \
-	cd boost_1_81_0 && \
+	cd boost_1_87_0 && \
 	./bootstrap.sh && \
 	./b2 install link=static && \
 	cd /home/dependencies
@@ -95,7 +95,7 @@ RUN git clone --branch v2.13.6 https://github.com/catchorg/Catch2.git && \
 
 RUN git clone https://github.com/aws-samples/aws-iot-securetunneling-localproxy && \
 	cd aws-iot-securetunneling-localproxy && \
-    git checkout d3150e0ebc4ef022939deb1ab43de005254f5751 && \
+    git checkout 8557d5faf5fe21fbf8ddbc82e96840d8fe985cef && \
 	mkdir build && \
 	cd build && \
 	cmake ../ && \
